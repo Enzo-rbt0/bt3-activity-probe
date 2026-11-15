@@ -38,8 +38,13 @@ export function create(dir) {
     console.log(`criado ${path}: ${SIZE} bytes lógicos, ${Math.ceil(physical() / 1024)} KiB físicos`);
   } catch (e) {
     closeSync(fd);
-    unlinkSync(path);
-    die(`${e.message}. Arquivo apagado.`);
+    try {
+      unlinkSync(path);
+    } catch {
+      // conferido logo abaixo
+    }
+    if (existsSync(path)) die(`${e.message}. NÃO consegui apagar o arquivo incompleto: apague manualmente ${path}`);
+    die(`${e.message}. Arquivo incompleto apagado (conferido).`);
   }
   closeSync(fd);
   return path;

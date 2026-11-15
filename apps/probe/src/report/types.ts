@@ -153,6 +153,7 @@ export interface PadResult extends Basic {
   triggers_tested: number[];
   focus_regained: boolean;
   input_after_refocus: boolean | null;
+  triggers_verifiable: boolean | null;
 }
 
 export interface TouchResult extends Basic {

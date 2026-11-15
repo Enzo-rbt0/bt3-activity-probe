@@ -151,9 +151,19 @@ try {
     throw ("depois dos marcadores o arquivo ocupa {0:N0} MiB de verdade" -f ($fisico / 1MB))
   }
 } catch {
+  $motivo = $_.Exception.Message
   if ($fs) { $fs.Dispose() }
-  if (Test-Path -LiteralPath $Caminho) { Remove-Item -LiteralPath $Caminho -ErrorAction SilentlyContinue }
-  Write-Host "ERRO: $($_.Exception.Message). O arquivo foi apagado; nada ficou ocupando espaço." -ForegroundColor Red
+  if (Test-Path -LiteralPath $Caminho) { Remove-Item -LiteralPath $Caminho -Force -ErrorAction SilentlyContinue }
+  # Só afirma que apagou depois de conferir.
+  if (Test-Path -LiteralPath $Caminho) {
+    Write-Host "ERRO: $motivo." -ForegroundColor Red
+    Write-Host "ATENÇÃO: NÃO consegui apagar o arquivo incompleto: $Caminho" -ForegroundColor Yellow
+    Write-Host "Apague manualmente: feche programas que possam estar usando o arquivo e rode" -ForegroundColor Yellow
+    Write-Host "  Remove-Item -LiteralPath `"$Caminho`" -Force" -ForegroundColor Yellow
+    Write-Host "ou apague pelo Explorador de Arquivos (e esvazie a Lixeira)." -ForegroundColor Yellow
+    exit 2
+  }
+  Write-Host "ERRO: $motivo. O arquivo incompleto foi apagado (conferido); nada ficou ocupando espaço." -ForegroundColor Red
   exit 1
 }
 

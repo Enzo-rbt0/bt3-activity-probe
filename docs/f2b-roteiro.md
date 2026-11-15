@@ -17,14 +17,14 @@ Plano: [`f2b-plano.md`](f2b-plano.md) (versão 2, aprovada).
       ```
       O `-ExecutionPolicy Bypass` vale só para esta execução e não muda nada no Windows.
    4. O script mostra o **espaço realmente ocupado**, que deve ser de poucos KiB. Se ele parar com erro, nada é criado e nenhum espaço fica ocupado. Me mande a mensagem de erro.
-   5. **Este script não foi testado no Windows** (o agente não tem Windows). Se algo der errado, pare e me mande o que apareceu.
+   5. O script é testado automaticamente num Windows da CI (PowerShell 5.1, o mesmo do seu PC): criação, tamanho, marcadores, espaço físico, recusa de sobrescrever e apagar. Mesmo assim, se aparecer qualquer erro, pare e me mande a mensagem. Se ele disser que **não conseguiu apagar** o arquivo incompleto, siga a instrução de limpeza manual que ele mostra.
 
 ## 1. Em cada ambiente (PC – Discord Desktop, Android – app Discord, Discord Web)
 
 | Cartão | O que fazer |
 |---|---|
 | **Teclado** | "Começar" → aperte W, A, S, D, as 4 setas, Espaço e Enter → segure **W+D+Espaço** juntas → segure **W+Shift+Espaço** juntas → "Concluir teclas". **Baixe ou copie o JSON agora**, porque a Esc pode fechar a Activity. Depois: "Testar Esc (5 s)" → aperte Esc |
-| **Controle** | Ligue o controle antes → "Começar" → aperte um botão para ele aparecer → aperte botões, os dois gatilhos e mexa os **dois** analógicos → troque de janela ou app, volte e aperte um botão → "Concluir" |
+| **Controle** | Ligue o controle antes → "Começar" → aperte um botão para ele aparecer → aperte botões, **os dois gatilhos (LT/RT ou L2/R2)** e mexa os **dois** analógicos → **troque de janela ou app, volte e aperte um botão** → "Concluir". Sem os gatilhos e sem a volta do foco, o resultado é INV, não AP |
 | **Toque** (celular) | Toque com 1, 2 e 3 dedos na área cinza → arraste um dedo de um lado ao outro → "Concluir" |
 | **Tela cheia** | "Tela cheia": se abrir, ela sai sozinha em 2 s |
 | **Áudio** | "Tocar som" → responda "Ouvi" ou "Não ouvi". **Opcional no Android:** numa chamada de voz, "Tocar durante a chamada" e responda as duas perguntas |
@@ -52,7 +52,7 @@ Faça o **teclado** e o **toque** também no navegador comum fora do Discord: ht
 | Teste | AP | INV | RP | SKIP |
 |---|---|---|---|---|
 | A-KEY | Todas as teclas, as 2 combinações e Esc chegaram | Alguma tecla ou combinação não chegou (compare fora do Discord) | Nenhuma tecla chegou | Pulado ou não feito |
-| A-PAD | Botão e os dois analógicos lidos (os gatilhos ficam registrados à parte) | A API existe, mas o controle não apareceu, ou o teste ficou incompleto | API bloqueada pelo iframe ou inexistente | Pulado |
+| A-PAD | Validação completa: botão, os dois analógicos, os dois gatilhos e comando depois de recuperar o foco | Funciona em parte; ou controle com mapeamento não padrão (gatilhos não verificáveis); ou a API existe, mas o controle não apareceu | API bloqueada pelo iframe ou inexistente | Pulado |
 | A-TOUCH | 2 ou mais dedos e arrasto, sem cancelamentos | Só 1 dedo, ou houve cancelamento (causa não identificada) | — | Sem tela de toque ou pulado |
 | A-FS | Tela cheia abriu | — | Não permitida: **limitação documentada, não bloqueio** | Pulado |
 | A-AUDIO | Tocou depois do clique e você ouviu. Áudio suspenso antes do clique é normal | — | Não tocou ou você não ouviu | Pulado |

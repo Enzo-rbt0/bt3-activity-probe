@@ -1,6 +1,8 @@
-# Experimento A — Plano da F2b (proposta para revisão)
+# Experimento A — Plano da F2b (histórico: plano aprovado)
 
-Versão 2, de 15/11/2026, com os ajustes da revisão do ChatGPT ("Aprovado com ajustes pontuais"). **A F2b-0 já está implementada (PR #3). Nenhum código da F2b foi escrito.** A F2b começa quando o usuário der "pode", depois do merge da F2b-0.
+> **Estado (registrado depois):** este é o plano aprovado da F2b, mantido como referência histórica sem reescrever o conteúdo. A F2b-0 foi implementada no PR #3 (publicada na 0.2.1) e a **F2b foi implementada no PR #4** (versão 0.3.0). Os ajustes da revisão do PR #4 (critério completo do controle e teste do script no Windows pela CI) estão no próprio PR.
+
+Versão 2, de 15/11/2026, com os ajustes da revisão do ChatGPT ("Aprovado com ajustes pontuais"). *Texto original:* "A F2b-0 já está implementada (PR #3). Nenhum código da F2b foi escrito. A F2b começa quando o usuário der "pode", depois do merge da F2b-0."
 
 Base: a F2a está concluída (ver `f2a-resultados.md`). WebAssembly, CSP, JSPI e Asyncify (navegador e Emscripten), IndexedDB e o save depois de fechar e reabrir deram AP no Discord Desktop, no Discord Web e no Android.
 

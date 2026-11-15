@@ -191,6 +191,7 @@ export class PadTest {
       buttons_tested: [...this.buttons].sort((a, b) => a - b), left_stick: this.left, right_stick: this.right,
       triggers_tested: [...this.triggers].sort((a, b) => a - b), focus_regained: this.focusRegained,
       input_after_refocus: this.inputAfterRefocus,
+      triggers_verifiable: this.detected ? this.mapping === 'standard' : null,
     };
     if (!this.apiPresent) return { status: 'RP', detail: 'A API de controle (Gamepad) não existe neste ambiente.', ...base };
     if (this.blocked) return { status: 'RP', detail: 'A API de controle está bloqueada pela política do iframe (SecurityError).', ...base };
@@ -199,17 +200,30 @@ export class PadTest {
     if (!this.detected) {
       return { status: 'INV', detail: 'A API existe, mas nenhum controle apareceu (ele só aparece depois de apertar um botão com a Activity em foco).', ...base };
     }
-    const tested = [
-      `${this.buttons.size} botão(ões)`,
-      this.left ? 'analógico esquerdo' : null,
-      this.right ? 'analógico direito' : null,
-      this.triggers.size ? `${this.triggers.size} gatilho(s)` : null,
-    ].filter(Boolean).join(', ');
-    if (this.buttons.size > 0 && this.left && this.right) {
-      const refocus = this.inputAfterRefocus === true ? ' Continuou funcionando depois de perder e recuperar o foco.' : '';
-      return { status: 'AP', detail: `Controle lido: ${tested}. Só isso foi verificado.${refocus}`, ...base };
+    // AP só com a validação completa do plano (revisão do PR #4): botão, os dois analógicos, os dois
+    // gatilhos (só verificáveis no mapeamento "standard") e comando depois de perder e recuperar o foco.
+    const standard = this.mapping === 'standard';
+    const checks: [string, boolean][] = [
+      ['botão', this.buttons.size > 0],
+      ['analógico esquerdo', this.left],
+      ['analógico direito', this.right],
+      ['os dois gatilhos', standard && TRIGGERS.every((i) => this.triggers.has(i))],
+      ['comando depois de perder e recuperar o foco', this.focusRegained && this.inputAfterRefocus === true],
+    ];
+    const ok = checks.filter(([, v]) => v).map(([k]) => k);
+    const missing = checks.filter(([, v]) => !v).map(([k]) => k);
+    if (missing.length === 0) {
+      return { status: 'AP', detail: `Validação completa: ${ok.join(', ')}. Só isso foi verificado.`, ...base };
     }
-    return { status: 'INV', detail: `Controle detectado, mas o teste ficou incompleto: ${tested || 'nada'} (precisa de botão e dos dois analógicos).`, ...base };
+    const limit = standard
+      ? ''
+      : ' Mapeamento não padrão: a posição dos gatilhos não é conhecida, então eles não podem ser confirmados (limitação registrada).';
+    const why = missing.map((m) => (m === 'comando depois de perder e recuperar o foco' && !this.focusRegained ? 'recuperação de foco (não testada)' : m));
+    return {
+      status: 'INV',
+      detail: `Controle funciona em parte. Verificado: ${ok.join(', ') || 'nada'}. Não comprovado: ${why.join(', ')}.${limit}`,
+      ...base,
+    };
   }
 }
 

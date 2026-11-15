@@ -1041,7 +1041,8 @@
             "right_stick",
             "triggers_tested",
             "focus_regained",
-            "input_after_refocus"
+            "input_after_refocus",
+            "triggers_verifiable"
           ],
           "properties": {
             "status": {
@@ -1103,6 +1104,9 @@
               "type": "boolean"
             },
             "input_after_refocus": {
+              "$ref": "#/definitions/bool"
+            },
+            "triggers_verifiable": {
               "$ref": "#/definitions/bool"
             }
           }

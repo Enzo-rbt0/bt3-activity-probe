@@ -108,23 +108,68 @@ describe('A-PAD', () => {
     t.finish();
     expect(t.result()).toMatchObject({ status: 'INV', pad_detected: false, blocked: false });
   });
-  it('botão + dois analógicos → AP; gatilhos ficam registrados à parte', () => {
+  const full = (t: PadTest, p = pad()) => {
+    t.observe([press(0, p)]);
+    t.observe([press(6, p)]);
+    t.observe([press(7, p)]);
+    t.observe([{ ...p, axes: [0.9, 0, 0, 0] }]);
+    t.observe([{ ...p, axes: [0, 0, 0, -0.8] }]);
+  };
+  it('validação completa (botão, 2 analógicos, 2 gatilhos, foco recuperado) → AP', () => {
+    const t = new PadTest(true);
+    full(t);
+    t.blur();
+    t.focus();
+    t.observe([press(1)]);
+    t.finish();
+    const r = t.result();
+    expect(r).toMatchObject({
+      status: 'AP', pad_type: 'xbox', buttons_tested: [0, 1], triggers_tested: [6, 7], left_stick: true, right_stick: true,
+      focus_regained: true, input_after_refocus: true, triggers_verifiable: true,
+    });
+    expect(r.detail).toContain('Só isso foi verificado');
+  });
+  it('botão + 2 analógicos, mas sem gatilhos nem teste de foco → INV (não AP)', () => {
     const t = new PadTest(true);
     t.observe([press(0)]);
-    t.observe([press(7)]);
     t.observe([pad({ axes: [0.9, 0, 0, 0] })]);
     t.observe([pad({ axes: [0, 0, 0, -0.8] })]);
     t.finish();
     const r = t.result();
-    expect(r).toMatchObject({ status: 'AP', pad_type: 'xbox', buttons_tested: [0], triggers_tested: [7], left_stick: true, right_stick: true });
-    expect(r.detail).toContain('Só isso foi verificado');
+    expect(r.status).toBe('INV');
+    expect(r.detail).toContain('os dois gatilhos');
+    expect(r.detail).toContain('recuperação de foco (não testada)');
   });
-  it('só um analógico → INV listando o que foi testado', () => {
+  it('perdeu o foco e nenhum comando chegou depois → INV, nunca AP', () => {
     const t = new PadTest(true);
+    full(t);
+    t.blur();
+    t.focus();
+    t.finish();
+    expect(t.result()).toMatchObject({ status: 'INV', focus_regained: true, input_after_refocus: false });
+  });
+  it('só um gatilho → INV', () => {
+    const t = new PadTest(true);
+    t.observe([press(0)]);
+    t.observe([press(6)]);
+    t.observe([pad({ axes: [0.9, 0, 0, -0.9] })]);
+    t.blur();
+    t.focus();
     t.observe([press(1)]);
-    t.observe([pad({ axes: [0.9, 0, 0, 0] })]);
     t.finish();
     expect(t.result().status).toBe('INV');
+  });
+  it('mapeamento não padrão: gatilhos não verificáveis → INV com a limitação registrada', () => {
+    const t = new PadTest(true);
+    const ns = pad({ mapping: '' });
+    full(t, ns);
+    t.blur();
+    t.focus();
+    t.observe([press(1, ns)]);
+    t.finish();
+    const r = t.result();
+    expect(r).toMatchObject({ status: 'INV', triggers_verifiable: false, mapping: null });
+    expect(r.detail).toContain('Mapeamento não padrão');
   });
   it('depois de perder e recuperar o foco: registra se ainda chegou comando', () => {
     const t = new PadTest(true);
