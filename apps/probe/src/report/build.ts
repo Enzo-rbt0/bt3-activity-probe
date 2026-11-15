@@ -17,7 +17,7 @@ export interface BuildInput {
 
 export function buildReport(i: BuildInput): Report {
   return {
-    schema: 'bt3probe.report/2',
+    schema: 'bt3probe.report/3',
     probe: { version: i.version, git_sha: i.gitSha, built_at: i.builtAt, sdk_version: i.sdkVersion },
     run: {
       id: i.runId,

@@ -42,6 +42,7 @@ export interface Gl2Result extends Basic {
   renderer: string | null;
   vendor: string | null;
   software_renderer: boolean | null;
+  gpu_acceleration_status: 'confirmed' | 'software' | 'unknown' | 'none';
   max_texture_size: number | null;
   max_renderbuffer_size: number | null;
   max_samples: number | null;
@@ -95,13 +96,14 @@ export interface IdbResult extends Basic {
   error: string | null;
 }
 
+export type PersistState = 'none' | 'pending' | 'confirmed' | 'cancelled';
 export interface PersistResult extends Basic {
   storage_context: StorageContext;
-  marker_found: boolean;
+  state_at_open: PersistState;
+  state_now: PersistState;
   marker_age_s: number | null;
+  last_confirmed_age_s: number | null;
   marker_written_this_session: boolean;
-  marker_pending: boolean;
-  marker_deleted: boolean;
   user_reported_missing: boolean;
 }
 
@@ -142,7 +144,7 @@ export interface Tests {
 }
 
 export interface Report {
-  schema: 'bt3probe.report/2';
+  schema: 'bt3probe.report/3';
   probe: { version: string; git_sha: string; built_at: string; sdk_version: string | null };
   run: { id: string; started_at: string; duration_ms: number; tz_offset_min: number };
   context: ContextInfo;

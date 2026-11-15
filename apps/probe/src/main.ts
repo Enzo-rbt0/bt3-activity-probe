@@ -169,9 +169,9 @@ async function main(): Promise<void> {
     pStatus.textContent = `${persistState.status} · ${persistState.detail}`;
     pStatus.className = `persist-status st-${persistState.status}`;
     const ok = !!idb && persistState.status !== 'RP';
-    pWrite.disabled = !ok || persistState.marker_found;
-    pDelete.disabled = !persistState.marker_pending;
-    pMissing.disabled = persistState.marker_found || persistState.marker_written_this_session || persistState.user_reported_missing;
+    pWrite.disabled = !ok || persistState.state_now === 'pending';
+    pDelete.disabled = persistState.state_now !== 'pending';
+    pMissing.disabled = !persist.canReportMissing();
   };
 
   refresh = () => {
@@ -212,7 +212,7 @@ async function main(): Promise<void> {
     persistUi();
     const v = validateReport(current);
     area.value = JSON.stringify(current, null, 2);
-    validEl.textContent = v.ok ? 'Relatório válido (schema bt3probe.report/2).' : `Relatório inválido: ${v.errors.join('; ')}`;
+    validEl.textContent = v.ok ? 'Relatório válido (schema bt3probe.report/3).' : `Relatório inválido: ${v.errors.join('; ')}`;
     validEl.className = `valid ${v.ok ? 'ok' : 'bad'}`;
     document.body.dataset.reportValid = String(v.ok);
   };

@@ -5,7 +5,7 @@ import { ASYNCIFY_WASM, CORE_WASM, FEATURE_WASM, JSPI_WASM } from './generated/w
 import { FEATURE_KEYS } from './report/types';
 import { hasJspi, readEmccVersion, runAsyncifyCore, runEmcc, runJspiCore } from './tests/a-async';
 import { classifyGl2 } from './tests/a-gl2';
-import { PersistTest, runIdbReadWrite } from './tests/a-idb';
+import { openDb, PersistTest, runIdbReadWrite } from './tests/a-idb';
 import {
   classifyWasmUrl, cspCategory, CspCollector, fromB64, jsBench, runBench, runWasmEmbed, runWasmFeat, runWasmUrl,
 } from './tests/a-wasm';
@@ -14,8 +14,8 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('A-GL2: dica de aceleração de hardware', () => {
   it('INV por software traz a dica; os outros casos não', () => {
-    expect(classifyGl2(true, true, true).detail).toContain('Aceleração de hardware');
-    expect(classifyGl2(true, true, false).detail).not.toContain('Aceleração de hardware');
+    expect(classifyGl2(true, true, 'software').detail).toContain('Aceleração de hardware');
+    expect(classifyGl2(true, true, 'confirmed').detail).not.toContain('Aceleração de hardware');
   });
 });
 
@@ -169,44 +169,103 @@ describe('A-IDB', () => {
   });
 });
 
-describe('A-IDB-PERSIST', () => {
-  it('fluxo completo: nada → grava → reabre e encontra (AP) → marcador apagado', async () => {
+describe('A-IDB-PERSIST (máquina de estados)', () => {
+  it('fluxo completo: none → gravar (pending) → reabrir (confirmed, AP) → reabrir (SKIP com recibo)', async () => {
     const idb = new IDBFactory();
     let now = 1_000_000;
     const s1 = new PersistTest(idb, 'discord-desktop-app', () => now);
-    expect((await s1.check()).status).toBe('SKIP');
-    const w = await s1.write();
-    expect(w).toMatchObject({ status: 'SKIP', marker_pending: true, marker_written_this_session: true });
+    expect(await s1.check()).toMatchObject({ status: 'SKIP', state_at_open: 'none', state_now: 'none' });
+    expect(await s1.write()).toMatchObject({ status: 'SKIP', state_now: 'pending', marker_written_this_session: true });
     now += 42_000;
     const s2 = new PersistTest(idb, 'discord-desktop-app', () => now);
-    expect(await s2.check()).toMatchObject({ status: 'AP', marker_found: true, marker_age_s: 42, marker_deleted: true });
+    expect(await s2.check()).toMatchObject({
+      status: 'AP', state_at_open: 'pending', state_now: 'confirmed', marker_age_s: 42, last_confirmed_age_s: 0,
+    });
+    now += 60_000;
     const s3 = new PersistTest(idb, 'discord-desktop-app', () => now);
-    expect((await s3.check()).status).toBe('SKIP');
+    expect(await s3.check()).toMatchObject({ status: 'SKIP', state_at_open: 'confirmed', last_confirmed_age_s: 60 });
   });
-  it('contextos não se misturam e não apagam o marcador do outro', async () => {
+
+  it('regressão da F2a: depois de confirmado, "sumiu" NÃO vira RP', async () => {
     const idb = new IDBFactory();
-    await new PersistTest(idb, 'discord-desktop-app').write();
-    expect((await new PersistTest(idb, 'standalone').check()).status).toBe('SKIP');
-    expect((await new PersistTest(idb, 'discord-web').check()).status).toBe('SKIP');
-    expect((await new PersistTest(idb, 'discord-desktop-app').check()).status).toBe('AP');
-  });
-  it('usuário relata que o marcador sumiu → RP; apagar a pedido → SKIP', async () => {
-    const idb = new IDBFactory();
+    await new PersistTest(idb, 'discord-mobile').write();
+    await new PersistTest(idb, 'discord-mobile').check(); // confirma
     const t = new PersistTest(idb, 'discord-mobile');
     await t.check();
-    expect(t.reportMissing()).toMatchObject({ status: 'RP', user_reported_missing: true });
-    const u = new PersistTest(idb, 'discord-mobile');
-    await u.write();
-    expect(await u.remove()).toMatchObject({ status: 'SKIP', marker_pending: false, marker_deleted: true });
-    expect((await new PersistTest(idb, 'discord-mobile').check()).status).toBe('SKIP');
+    expect(t.canReportMissing()).toBe(false);
+    expect(t.reportMissing()).toMatchObject({ status: 'SKIP', user_reported_missing: false });
   });
-  it('relato de "sumiu" é ignorado se o marcador foi encontrado', async () => {
+
+  it('uma confirmação antiga não aprova uma tentativa nova', async () => {
     const idb = new IDBFactory();
     await new PersistTest(idb, 'discord-web').write();
+    await new PersistTest(idb, 'discord-web').check(); // confirmed
+    const again = new PersistTest(idb, 'discord-web');
+    await again.check();
+    expect(await again.write()).toMatchObject({ status: 'SKIP', state_now: 'pending' });
+    // Mesma sessão: continua pendente, não aprova.
+    expect(again.result().status).toBe('SKIP');
+    // Só a próxima abertura confirma a tentativa nova.
+    expect((await new PersistTest(idb, 'discord-web').check()).state_at_open).toBe('pending');
+  });
+
+  it('apagar a pedido vira cancelled; na reabertura não aprova nem aceita "sumiu"', async () => {
+    const idb = new IDBFactory();
+    const t = new PersistTest(idb, 'standalone');
+    await t.check();
+    await t.write();
+    expect(await t.remove()).toMatchObject({ status: 'SKIP', state_now: 'cancelled' });
+    const u = new PersistTest(idb, 'standalone');
+    expect(await u.check()).toMatchObject({ status: 'SKIP', state_at_open: 'cancelled' });
+    expect(u.canReportMissing()).toBe(false);
+  });
+
+  it('sem registro nenhum: "sumiu" é aceito (RP) e não pode ser repetido', async () => {
+    const t = new PersistTest(new IDBFactory(), 'discord-mobile');
+    await t.check();
+    expect(t.canReportMissing()).toBe(true);
+    expect(t.reportMissing()).toMatchObject({ status: 'RP', user_reported_missing: true });
+    expect(t.canReportMissing()).toBe(false);
+  });
+
+  it('quem gravou nesta sessão não pode marcar "sumiu"', async () => {
+    const t = new PersistTest(new IDBFactory(), 'discord-mobile');
+    await t.check();
+    await t.write();
+    expect(t.canReportMissing()).toBe(false);
+  });
+
+  it('contextos não se misturam', async () => {
+    const idb = new IDBFactory();
+    await new PersistTest(idb, 'discord-desktop-app').write();
+    expect((await new PersistTest(idb, 'standalone').check()).state_at_open).toBe('none');
+    expect((await new PersistTest(idb, 'discord-web').check()).state_at_open).toBe('none');
+    expect((await new PersistTest(idb, 'discord-desktop-app').check()).status).toBe('AP');
+  });
+
+  it('"Apagar" só vale com teste pendente: não transforma um recibo em cancelled', async () => {
+    const idb = new IDBFactory();
+    await new PersistTest(idb, 'discord-web').write();
+    await new PersistTest(idb, 'discord-web').check(); // confirmed
     const t = new PersistTest(idb, 'discord-web');
     await t.check();
-    expect(t.reportMissing().status).toBe('AP');
+    expect((await t.remove()).state_now).toBe('confirmed');
+    expect((await new PersistTest(idb, 'discord-web').check()).state_at_open).toBe('confirmed');
   });
+
+  it('registro com contexto diferente do esperado é ignorado', async () => {
+    const idb = new IDBFactory();
+    const db = await openDb(idb);
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('kv', 'readwrite');
+      tx.objectStore('kv').put({ state: 'pending', ctx: 'discord-web', created_at: 0 }, 'persist:standalone');
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+    expect((await new PersistTest(idb, 'standalone').check()).state_at_open).toBe('none');
+  });
+
   it('sem IndexedDB: RP', async () => {
     expect((await new PersistTest(undefined, 'standalone').check()).status).toBe('RP');
   });
