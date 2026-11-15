@@ -121,6 +121,10 @@ describe('A-JSPI-CORE / A-ASYNCIFY-CORE', () => {
     expect(r.error).toBeNull();
     expect(r).toMatchObject({ status: 'AP', result: 42 });
   });
+  it('Asyncify que retoma com valor errado é RP (não aprova à toa)', async () => {
+    const r = await runAsyncifyCore(fromB64(ASYNCIFY_WASM), WebAssembly, 10);
+    expect(r).toMatchObject({ status: 'RP', result: 11 });
+  });
   it('Asyncify com módulo sem a transformação falha (não aprova à toa)', async () => {
     const r = await runAsyncifyCore(fromB64(JSPI_WASM));
     expect(r.status).toBe('RP');

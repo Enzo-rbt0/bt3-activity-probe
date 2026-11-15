@@ -69,7 +69,9 @@ interface AsyncifyExports {
 const DATA = 16; // estrutura do Asyncify: [início, fim] da área de pilha salva
 const STACK_END = 1024;
 
-export async function runAsyncifyCore(bytes: Uint8Array<ArrayBuffer>, wa: typeof WebAssembly = WebAssembly): Promise<AsyncResult> {
+// waitValue: valor que a Promise devolve (41 → resultado certo 42). Os testes usam outro valor para
+// conferir que um resultado errado não é aprovado.
+export async function runAsyncifyCore(bytes: Uint8Array<ArrayBuffer>, wa: typeof WebAssembly = WebAssembly, waitValue = 41): Promise<AsyncResult> {
   const t0 = performance.now();
   try {
     let ex!: AsyncifyExports;
@@ -88,7 +90,7 @@ export async function runAsyncifyCore(bytes: Uint8Array<ArrayBuffer>, wa: typeof
           view[0] = DATA + 8;
           view[1] = STACK_END;
           ex.asyncify_start_unwind(DATA);
-          pending = sleep(10).then(() => 41);
+          pending = sleep(10).then(() => waitValue);
           return 0;
         },
       },
