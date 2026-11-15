@@ -135,7 +135,7 @@ try {
   $fs = [System.IO.File]::Open($Caminho, 'CreateNew', 'ReadWrite', 'Read')
   [Bt3ProbeSparse]::SetSparse($fs.SafeFileHandle)
   $fs.SetLength($Tamanho)
-  $fs.Flush()
+  $fs.Flush($true)  # grava no disco antes de medir o espaço físico
   $fisico = [Bt3ProbeSparse]::PhysicalSize($Caminho)
   if ($fisico -gt $LimiteFisico) {
     throw ("o modo esparso não funcionou: o arquivo já ocupa {0:N0} MiB de verdade" -f ($fisico / 1MB))
@@ -143,7 +143,7 @@ try {
   Escrever-Marcador $fs 0
   Escrever-Marcador $fs $Apos2GiB
   Escrever-Marcador $fs ($Tamanho - 4096)
-  $fs.Flush()
+  $fs.Flush($true)  # grava no disco antes de medir o espaço físico
   $fs.Dispose()
   $fs = $null
   $fisico = [Bt3ProbeSparse]::PhysicalSize($Caminho)
