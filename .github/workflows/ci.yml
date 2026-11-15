@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Tipos
+        run: npm run typecheck
+      - name: Testes unitários
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Chromium para o teste de fumaça
+        run: npx playwright install --with-deps chromium
+      - name: Teste de fumaça (fora do Discord)
+        run: npm run smoke

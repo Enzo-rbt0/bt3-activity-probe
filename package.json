@@ -1,0 +1,30 @@
+{
+  "name": "bt3-activity-probe",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Activity de diagnóstico do Discord (Experimento A). Sem nenhum código ou recurso de BT3.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "gen:validator": "node packages/report-schema/scripts/gen-validator.mjs",
+    "typecheck": "npm run gen:validator && tsc -p apps/probe/tsconfig.json --noEmit",
+    "test": "npm run gen:validator && vitest run",
+    "build": "npm run gen:validator && vite build --config apps/probe/vite.config.ts",
+    "dev": "npm run gen:validator && vite --config apps/probe/vite.config.ts",
+    "preview": "vite preview --config apps/probe/vite.config.ts --port 4173 --strictPort",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "dependencies": {
+    "@discord/embedded-app-sdk": "2.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "ajv": "8.20.0",
+    "playwright": "1.65.1",
+    "typescript": "7.0.2",
+    "vite": "8.3.8",
+    "vitest": "5.1.0"
+  }
+}

@@ -1,0 +1,70 @@
+:root {
+  --bg: #f6f7f9;
+  --fg: #16181d;
+  --muted: #5b6270;
+  --card: #ffffff;
+  --line: #d9dde4;
+  --ok: #1f7a3a;
+  --bad: #b3261e;
+  --warn: #8a5a00;
+  --accent: #4752c4;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1e1f22;
+    --fg: #e6e7ea;
+    --muted: #a1a6b0;
+    --card: #2b2d31;
+    --line: #3f4248;
+    --ok: #57c27a;
+    --bad: #f28b82;
+    --warn: #e2b35a;
+    --accent: #8d96f2;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+main { max-width: 760px; margin: 0 auto; padding: 16px; }
+h1 { font-size: 1.35rem; margin: 0 0 4px; }
+h2 { font-size: 1.05rem; margin: 0 0 8px; }
+.sub, .legend, .hint { color: var(--muted); font-size: 0.85rem; margin: 0 0 8px; }
+.mode { font-weight: 600; margin: 8px 0 16px; }
+section { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+th:nth-child(1), td:nth-child(1) { width: 26%; }
+th:nth-child(2), td:nth-child(2) { width: 16%; }
+.st { font-weight: 700; }
+.st-AP { color: var(--ok); }
+.st-RP, .st-ERRO { color: var(--bad); }
+.st-INV, .st-SKIP { color: var(--warn); }
+form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+label { display: flex; flex-direction: column; gap: 4px; font-size: 0.9rem; color: var(--muted); }
+label.wide { grid-column: 1 / -1; }
+input, select, textarea, button {
+  font: inherit;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  min-width: 0;
+}
+textarea#json { width: 100%; font: 12px/1.4 ui-monospace, Consolas, monospace; }
+.buttons { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+button { background: var(--accent); color: #fff; border: none; padding: 10px 14px; cursor: pointer; }
+button:disabled { opacity: 0.5; cursor: default; }
+.valid { font-weight: 600; margin: 0 0 8px; }
+.valid.ok { color: var(--ok); }
+.valid.bad { color: var(--bad); }
+@media (max-width: 520px) {
+  form { grid-template-columns: 1fr; }
+  th:nth-child(1), td:nth-child(1) { width: 30%; }
+  th:nth-child(2), td:nth-child(2) { width: 20%; }
+}
