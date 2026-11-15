@@ -9,26 +9,27 @@ import Ajv from 'ajv';
 import standaloneCode from 'ajv/dist/standalone/index.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const schema = JSON.parse(readFileSync(join(here, '../schema/report.v1.json'), 'utf8'));
-const ajv = new Ajv({ code: { source: true, esm: true }, allErrors: true, strict: true });
-const validate = ajv.compile(schema);
 const out = join(here, '../generated');
 mkdirSync(out, { recursive: true });
 // O código gerado usa require() para contar caracteres em maxLength. No navegador não existe require,
 // então a função é escrita direto no arquivo (conta pontos de código Unicode, igual à original do Ajv).
 const RUNTIME = 'require("ajv/dist/runtime/ucs2length")';
 const INLINE = '{ default: (s) => Array.from(s).length }';
-const code = standaloneCode(ajv, validate).replaceAll(RUNTIME, INLINE);
-if (code.includes('require(')) throw new Error('validador gerado ainda depende de require()');
-writeFileSync(join(out, 'validate-report.mjs'), `// Gerado por scripts/gen-validator.mjs. Não editar.\n${code}`);
-writeFileSync(
-  join(out, 'validate-report.d.mts'),
-  [
-    '// Gerado por scripts/gen-validator.mjs. Não editar.',
-    'export interface ValidationError { instancePath: string; message?: string; keyword: string }',
-    'declare const validate: ((data: unknown) => boolean) & { errors?: ValidationError[] | null };',
-    'export default validate;',
-    '',
-  ].join('\n'),
-);
-console.log('validador do relatório gerado');
+const DTS = [
+  '// Gerado por scripts/gen-validator.mjs. Não editar.',
+  'export interface ValidationError { instancePath: string; message?: string; keyword: string }',
+  'declare const validate: ((data: unknown) => boolean) & { errors?: ValidationError[] | null };',
+  'export default validate;',
+  '',
+].join('\n');
+
+// Um validador por versão do formato: relatórios antigos continuam verificáveis.
+for (const v of [1, 2]) {
+  const schema = JSON.parse(readFileSync(join(here, `../schema/report.v${v}.json`), 'utf8'));
+  const ajv = new Ajv({ code: { source: true, esm: true }, allErrors: true, strict: true });
+  const code = standaloneCode(ajv, ajv.compile(schema)).replaceAll(RUNTIME, INLINE);
+  if (code.includes('require(')) throw new Error(`validador v${v} ainda depende de require()`);
+  writeFileSync(join(out, `validate-report-v${v}.mjs`), `// Gerado por scripts/gen-validator.mjs. Não editar.\n${code}`);
+  writeFileSync(join(out, `validate-report-v${v}.d.mts`), DTS);
+}
+console.log('validadores do relatório gerados (v1 e v2)');

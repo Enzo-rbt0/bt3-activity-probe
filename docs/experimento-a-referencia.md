@@ -48,6 +48,7 @@ Fork `stufno102/Tenkaichi3Decomp`, branch `web-port`, commit `81507cd` (12/10/20
 | ADR-09 | Modo fora do Discord: a sonda roda os mesmos testes no navegador comum, sem o SDK, como base de comparação | Aceita |
 | ADR-10 | Canais de rede com limites e **interruptor no servidor, desligado por padrão**, ligado só por ação administrativa do usuário (não por botão na Activity) | Aceita |
 | ADR-11 | Relatórios ficam no aparelho por padrão; envio ao servidor só com autorização na hora, sem identificadores permanentes | Aceita |
+| ADR-13 | F2 testa JSPI/Asyncify em dois níveis: CORE (WAT + binaryen, mecanismo do navegador) e EMCC (C mínimo + Emscripten 6.0.13, runtime real). O Emscripten só compila no GitHub Actions | Aceita (usuário e revisão, 15/11) |
 | ADR-12 | F1 e F2 hospedadas no **GitHub Pages** (repositório público, sem custo). Publicação automática a **cada merge na `main`**: aprovar o merge = aprovar a publicação | Aceita (usuário, 14/11) |
 
 ## 4. Hipóteses ainda não validadas (não tratar como fato)
@@ -134,6 +135,9 @@ results/                relatórios aprovados (commit do usuário)
 | Interpretar resultados | rascunho | decide |
 
 ## 7. Emendas da preparação da F1 (14/11/2026)
+
+> F1 concluída em 15/11/2026 (PC, notebook e Android aprovados). F2 planejada em `f2-plano.md` (v2, aprovada); F2a em andamento.
+
 
 - **Hospedagem:** GitHub Pages na F1–F2 (ADR-12). Cloudflare só entra na F3, para a rede (é grátis; talvez US$ 5/mês nos testes de rede).
 - **URL Mapping configurado pelo usuário:** prefixo `/` → `enzo-rbt0.github.io/bt3-activity-probe`.

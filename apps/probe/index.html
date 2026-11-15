@@ -10,7 +10,7 @@
     <main id="app">
       <header>
         <h1>Sonda de diagnóstico</h1>
-        <p class="sub">Experimento A · fase F1 · <span id="build"></span></p>
+        <p class="sub">Experimento A · fase F2a · <span id="build"></span></p>
         <p id="mode" class="mode">Detectando ambiente…</p>
       </header>
 
@@ -21,6 +21,21 @@
           <tbody></tbody>
         </table>
         <p class="legend">AP = aprovado · RP = reprovado · INV = inconclusivo · SKIP = não rodou · ERRO = falhou</p>
+      </section>
+
+      <section aria-labelledby="t-persist">
+        <h2 id="t-persist">Save entre sessões (A-IDB-PERSIST)</h2>
+        <p id="persist-status" class="persist-status">Verificando…</p>
+        <ol class="steps">
+          <li>Aperte <strong>Gravar marcador</strong>.</li>
+          <li>Feche a Activity e abra de novo <strong>neste mesmo ambiente</strong> (mesmo app ou mesmo navegador).</li>
+          <li>Na nova abertura, o resultado aparece aqui e no relatório.</li>
+        </ol>
+        <div class="buttons">
+          <button id="persist-write" type="button" disabled>Gravar marcador</button>
+          <button id="persist-delete" type="button" class="secondary" disabled>Apagar marcador</button>
+          <button id="persist-missing" type="button" class="secondary" disabled>Gravei antes e ele sumiu</button>
+        </div>
       </section>
 
       <section aria-labelledby="t-info">

@@ -14,7 +14,12 @@ export function classifyGl2(contextOk: boolean, drawOk: boolean, software: boole
   if (!contextOk) return { status: 'RP', detail: 'Não foi possível criar um contexto WebGL 2.' };
   if (!drawOk) return { status: 'RP', detail: 'Contexto WebGL 2 criado, mas o teste de desenho falhou.' };
   if (software === true) {
-    return { status: 'INV', detail: 'WebGL 2 funciona, mas por renderização em software (sem placa de vídeo): lento demais para jogo.' };
+    return {
+      status: 'INV',
+      detail:
+        'WebGL 2 funciona, mas por renderização em software (sem placa de vídeo): lento demais para jogo. ' +
+        'No Discord: Configurações → Avançado → Aceleração de hardware.',
+    };
   }
   if (software === null) {
     return { status: 'INV', detail: 'WebGL 2 funciona, mas o navegador escondeu o nome da placa de vídeo.' };

@@ -1,6 +1,6 @@
 {
   "name": "bt3-activity-probe",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Activity de diagnóstico do Discord (Experimento A). Sem nenhum código ou recurso de BT3.",
   "type": "module",
@@ -9,10 +9,13 @@
   },
   "scripts": {
     "gen:validator": "node packages/report-schema/scripts/gen-validator.mjs",
-    "typecheck": "npm run gen:validator && tsc -p apps/probe/tsconfig.json --noEmit",
-    "test": "npm run gen:validator && vitest run",
-    "build": "npm run gen:validator && vite build --config apps/probe/vite.config.ts",
-    "dev": "npm run gen:validator && vite --config apps/probe/vite.config.ts",
+    "gen:wasm": "node scripts/gen-wasm.mjs",
+    "gen": "npm run gen:validator && npm run gen:wasm",
+    "build:emcc": "bash scripts/build-emcc.sh",
+    "typecheck": "npm run gen && tsc -p apps/probe/tsconfig.json --noEmit",
+    "test": "npm run gen && vitest run",
+    "build": "npm run gen && npm run build:emcc && vite build --config apps/probe/vite.config.ts",
+    "dev": "npm run gen && vite --config apps/probe/vite.config.ts",
     "preview": "vite preview --config apps/probe/vite.config.ts --port 4173 --strictPort",
     "smoke": "node scripts/smoke.mjs"
   },
@@ -22,9 +25,12 @@
   "devDependencies": {
     "@types/node": "22.20.5",
     "ajv": "8.20.0",
+    "binaryen": "132.0.0",
+    "fake-indexeddb": "6.2.6",
     "playwright": "1.65.1",
     "typescript": "7.0.2",
     "vite": "8.3.8",
-    "vitest": "5.1.0"
+    "vitest": "5.1.0",
+    "wabt": "1.0.39"
   }
 }

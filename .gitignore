@@ -3,3 +3,9 @@ apps/probe/dist/
 packages/report-schema/generated/
 *.log
 .DS_Store
+apps/probe/src/generated/
+apps/probe/public/wasm/
+apps/probe/public/emcc/
+# Arquivo sintético da F2b (nunca vai para o GitHub)
+*.bt3probe-large.bin
+emsdk-cache/
