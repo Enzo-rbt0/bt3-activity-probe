@@ -266,6 +266,67 @@ describe('A-IDB-PERSIST (máquina de estados)', () => {
     expect((await new PersistTest(idb, 'standalone').check()).state_at_open).toBe('none');
   });
 
+  it('falha ao gravar o recibo: persistência comprovada, mas recibo NÃO declarado como guardado', async () => {
+    const idb = new IDBFactory();
+    await new PersistTest(idb, 'discord-mobile', () => 1_000).write();
+    const t = new PersistTest(idb, 'discord-mobile', () => 31_000);
+    const spy = vi.spyOn(t as unknown as { save: () => Promise<unknown> }, 'save').mockRejectedValueOnce(new Error('cota cheia'));
+    const r = await t.check();
+    expect(spy).toHaveBeenCalledOnce();
+    expect(r).toMatchObject({ status: 'AP', state_now: 'pending', receipt_saved: false, marker_age_s: 30 });
+    expect(r.detail).toContain('NÃO foi gravado');
+    expect(r.detail).not.toContain('Recibo guardado');
+    // O registro continua pendente: a próxima abertura confirma de novo, agora com recibo.
+    expect(await new PersistTest(idb, 'discord-mobile', () => 40_000).check()).toMatchObject({ status: 'AP', receipt_saved: true, state_now: 'confirmed' });
+  });
+
+  it('recibo gravado com sucesso: receipt_saved = true', async () => {
+    const idb = new IDBFactory();
+    await new PersistTest(idb, 'discord-web').write();
+    expect(await new PersistTest(idb, 'discord-web').check()).toMatchObject({ receipt_saved: true, legacy_migrated: false });
+  });
+
+  async function putRaw(idb: IDBFactory, key: string, value: unknown): Promise<void> {
+    const db = await openDb(idb);
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('kv', 'readwrite');
+      tx.objectStore('kv').put(value, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  }
+  async function getRaw(idb: IDBFactory, key: string): Promise<unknown> {
+    const db = await openDb(idb);
+    const v = await new Promise((resolve, reject) => {
+      const r = db.transaction('kv', 'readonly').objectStore('kv').get(key);
+      r.onsuccess = () => resolve(r.result);
+      r.onerror = () => reject(r.error);
+    });
+    db.close();
+    return v;
+  }
+
+  it('migração: marcador pendente da versão 0.2.0 (chave antiga) é encontrado, confirmado e a chave antiga apagada', async () => {
+    const idb = new IDBFactory();
+    await putRaw(idb, 'persist-marker:discord-desktop-app', { id: 'x', created_at: 1_000, ctx: 'discord-desktop-app' });
+    const r = await new PersistTest(idb, 'discord-desktop-app', () => 61_000).check();
+    expect(r).toMatchObject({ status: 'AP', legacy_migrated: true, state_at_open: 'pending', state_now: 'confirmed', marker_age_s: 60 });
+    expect(r.detail).toContain('0.2.0');
+    expect(await getRaw(idb, 'persist-marker:discord-desktop-app')).toBeUndefined();
+    expect(await new PersistTest(idb, 'discord-desktop-app').check()).toMatchObject({ state_at_open: 'confirmed', legacy_migrated: false });
+  });
+
+  it('migração não mistura contextos nem passa por cima de um registro novo', async () => {
+    const idb = new IDBFactory();
+    await putRaw(idb, 'persist-marker:discord-web', { id: 'x', created_at: 1_000, ctx: 'discord-web' });
+    expect((await new PersistTest(idb, 'standalone').check()).state_at_open).toBe('none');
+    await putRaw(idb, 'persist-marker:standalone', { id: 'y', created_at: 1_000, ctx: 'discord-mobile' });
+    expect(await new PersistTest(idb, 'standalone').check()).toMatchObject({ state_at_open: 'none', legacy_migrated: false });
+    await putRaw(idb, 'persist:discord-web', { state: 'cancelled', ctx: 'discord-web', created_at: 5, cancelled_at: 6 });
+    expect(await new PersistTest(idb, 'discord-web').check()).toMatchObject({ state_at_open: 'cancelled', legacy_migrated: false });
+  });
+
   it('sem IndexedDB: RP', async () => {
     expect((await new PersistTest(undefined, 'standalone').check()).status).toBe('RP');
   });

@@ -103,6 +103,10 @@ export interface PersistRecord {
   cancelled_at?: number;
 }
 const key = (ctx: StorageContext) => `persist:${ctx}`;
+// Chave usada pela versão 0.2.0 (F2a). Nela, um registro presente significava "marcador pendente"
+// (a 0.2.0 apagava o marcador ao confirmar). Lido uma vez e migrado para o formato novo.
+const legacyKey = (ctx: StorageContext) => `persist-marker:${ctx}`;
+interface LegacyMarker { id?: string; created_at: number; ctx: StorageContext }
 
 export class PersistTest {
   private state: PersistResult;
@@ -110,6 +114,7 @@ export class PersistTest {
     this.state = {
       status: 'SKIP', detail: '', storage_context: ctx, state_at_open: 'none', state_now: 'none',
       marker_age_s: null, last_confirmed_age_s: null, marker_written_this_session: false, user_reported_missing: false,
+      receipt_saved: null, legacy_migrated: false,
     };
   }
 
@@ -136,6 +141,18 @@ export class PersistTest {
     return this.withDb((db) => op(db, 'readonly', (s) => s.get(key(this.ctx)) as IDBRequest<PersistRecord | undefined>));
   }
 
+  // Migração da 0.2.0: um marcador pendente na chave antiga vira "pending" na chave nova e a chave
+  // antiga é apagada. Sem isso, um teste iniciado na 0.2.0 sumiria ao publicar a 0.2.1.
+  private async migrateLegacy(): Promise<PersistRecord | undefined> {
+    const old = await this.withDb((db) => op(db, 'readonly', (s) => s.get(legacyKey(this.ctx)) as IDBRequest<LegacyMarker | undefined>));
+    if (!old || old.ctx !== this.ctx || typeof old.created_at !== 'number') return undefined;
+    const rec: PersistRecord = { state: 'pending', ctx: this.ctx, created_at: old.created_at };
+    await this.save(rec);
+    await this.withDb((db) => op(db, 'readwrite', (s) => s.delete(legacyKey(this.ctx))));
+    this.state = { ...this.state, legacy_migrated: true };
+    return rec;
+  }
+
   private save(r: PersistRecord): Promise<IDBValidKey> {
     return this.withDb((db) => op(db, 'readwrite', (s) => s.put(r, key(this.ctx))));
   }
@@ -148,6 +165,7 @@ export class PersistTest {
     let rec: PersistRecord | undefined;
     try {
       rec = await this.read();
+      if (!rec) rec = await this.migrateLegacy();
     } catch (e) {
       this.state = { ...this.state, status: 'RP', detail: `IndexedDB indisponível: ${errText(e)}` };
       return this.result();
@@ -158,15 +176,21 @@ export class PersistTest {
     if (valid?.state === 'pending') {
       const age = this.age(valid.created_at);
       const confirmed: PersistRecord = { state: 'confirmed', ctx: this.ctx, created_at: valid.created_at, confirmed_at: this.now() };
+      const legacy = this.state.legacy_migrated ? ' (marcador da versão 0.2.0, migrado)' : '';
       try {
         await this.save(confirmed);
+        this.state = {
+          ...this.state, status: 'AP', state_now: 'confirmed', marker_age_s: age, last_confirmed_age_s: 0, receipt_saved: true,
+          detail: `PERSISTENCE_OK: o marcador gravado há ${age} s numa sessão anterior (${this.ctx}) foi encontrado${legacy}. Recibo guardado.`,
+        };
       } catch (e) {
-        this.state = { ...this.state, detail: `Marcador encontrado, mas não consegui gravar o recibo: ${errText(e)}` };
+        // A persistência foi comprovada (o marcador foi lido), mas o recibo não: o registro continua
+        // "pending" no armazenamento e isso é dito com todas as letras.
+        this.state = {
+          ...this.state, status: 'AP', state_now: 'pending', marker_age_s: age, receipt_saved: false,
+          detail: `PERSISTENCE_OK: o marcador gravado há ${age} s foi encontrado${legacy}, mas o recibo NÃO foi gravado (${errText(e)}). O registro continua pendente.`,
+        };
       }
-      this.state = {
-        ...this.state, status: 'AP', state_now: 'confirmed', marker_age_s: age, last_confirmed_age_s: 0,
-        detail: `PERSISTENCE_OK: o marcador gravado há ${age} s numa sessão anterior (${this.ctx}) foi encontrado. Recibo guardado.`,
-      };
     } else if (valid?.state === 'confirmed') {
       this.state = {
         ...this.state, status: 'SKIP',

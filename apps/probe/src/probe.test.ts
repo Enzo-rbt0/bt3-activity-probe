@@ -56,6 +56,12 @@ describe('classificação A-GL2', () => {
     ['WebKit WebGL', 'unknown'],
     ['Mozilla', 'unknown'],
     ['  ', 'unknown'],
+    // Revisão do PR #3: nome não reconhecido não confirma aceleração.
+    ['Generic Custom Renderer', 'unknown'],
+    ['ANGLE (Unknown, Some Future GPU Direct3D11)', 'unknown'],
+    ['Mali-G720', 'confirmed'],
+    ['ANGLE (Intel, Intel(R) UHD Graphics (0x0000A7A8) Direct3D11 vs_5_0 ps_5_0, D3D11)', 'confirmed'],
+    ['AMD Radeon RX 7800 XT', 'confirmed'],
   ])('%s → %s', (r, g) => expect(gpuAcceleration(r)).toBe(g));
   it('renderizador ausente é desconhecido; software_renderer só é true/false quando se sabe', () => {
     expect(gpuAcceleration(null)).toBe('unknown');
@@ -70,7 +76,8 @@ describe('classificação A-GL2', () => {
     const hidden = classifyGl2(true, true, 'unknown');
     expect(hidden.status).toBe('AP');
     expect(hidden.detail).toContain('NÃO confirmada');
-    expect(classifyGl2(true, true, 'confirmed')).toEqual({ status: 'AP', detail: 'WebGL 2 funciona com aceleração por placa de vídeo.' });
+    expect(classifyGl2(true, true, 'confirmed')).toMatchObject({ status: 'AP' });
+    expect(classifyGl2(true, true, 'confirmed').detail).toContain('indicativo');
   });
 });
 
@@ -118,6 +125,7 @@ function fullTests(): Tests {
     'A-IDB-PERSIST': {
       status: 'SKIP', detail: 'ok', storage_context: 'discord-desktop-app', state_at_open: 'confirmed', state_now: 'pending',
       marker_age_s: null, last_confirmed_age_s: 600, marker_written_this_session: true, user_reported_missing: false,
+      receipt_saved: null, legacy_migrated: false,
     },
     'A-LAYOUT': {
       status: 'AP', detail: 'ok', orientation_type: 'portrait-primary', orientation_angle: 0,

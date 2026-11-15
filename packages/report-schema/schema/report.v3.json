@@ -694,7 +694,9 @@
             "marker_age_s",
             "last_confirmed_age_s",
             "marker_written_this_session",
-            "user_reported_missing"
+            "user_reported_missing",
+            "receipt_saved",
+            "legacy_migrated"
           ],
           "properties": {
             "status": {
@@ -740,6 +742,12 @@
               "type": "boolean"
             },
             "user_reported_missing": {
+              "type": "boolean"
+            },
+            "receipt_saved": {
+              "$ref": "#/definitions/bool"
+            },
+            "legacy_migrated": {
               "type": "boolean"
             }
           }

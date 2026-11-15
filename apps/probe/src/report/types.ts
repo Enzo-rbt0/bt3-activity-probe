@@ -105,6 +105,8 @@ export interface PersistResult extends Basic {
   last_confirmed_age_s: number | null;
   marker_written_this_session: boolean;
   user_reported_missing: boolean;
+  receipt_saved: boolean | null;
+  legacy_migrated: boolean;
 }
 
 export interface LayoutChange { t_ms: number; width: number; height: number; orientation_type: string | null }

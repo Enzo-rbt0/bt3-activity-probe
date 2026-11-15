@@ -8,13 +8,20 @@ const SOFTWARE_RE = /swiftshader|llvmpipe|softpipe|software|basic render|microso
 // o Brave devolve só "Brave"). Com eles não dá para saber se há aceleração.
 const MASKED_RE = /^\s*(brave|webkit webgl|webkit|mozilla|google inc\.?|generic renderer|disabled|unknown)\s*$/i;
 
+// Só nomes de fabricantes/linhas de placa de vídeo conhecidos contam como "confirmed" (revisão do
+// PR #3). Nome não reconhecido = "unknown". Mesmo um nome reconhecido é evidência indicativa, não
+// medição: o desempenho real é medido na F3.
+const HARDWARE_RE =
+  /nvidia|geforce|quadro|\brtx\b|\bgtx\b|\bamd\b|radeon|\bati\b|intel\(r\)|intel.*(uhd|iris|hd graphics|arc)|\badreno\b|\bmali\b|powervr|apple (gpu|m\d)|xclipse|immortalis|tegra|vivante/i;
+
 export type GpuAcceleration = 'confirmed' | 'software' | 'unknown' | 'none';
 
 // Duas perguntas separadas (revisão da F2b): o WebGL 2 funciona? A aceleração por placa de vídeo
 // está confirmada? Esconder o nome da placa não quer dizer que o WebGL 2 falhou.
 export function gpuAcceleration(renderer: string | null): Exclude<GpuAcceleration, 'none'> {
   if (renderer === null || renderer.trim() === '' || MASKED_RE.test(renderer)) return 'unknown';
-  return SOFTWARE_RE.test(renderer) ? 'software' : 'confirmed';
+  if (SOFTWARE_RE.test(renderer)) return 'software';
+  return HARDWARE_RE.test(renderer) ? 'confirmed' : 'unknown';
 }
 
 export function isSoftwareRenderer(renderer: string | null): boolean | null {
@@ -36,10 +43,10 @@ export function classifyGl2(contextOk: boolean, drawOk: boolean, accel: GpuAccel
   if (accel === 'unknown') {
     return {
       status: 'AP',
-      detail: 'WebGL 2 funciona. Aceleração por placa de vídeo NÃO confirmada: o navegador escondeu o nome da placa.',
+      detail: 'WebGL 2 funciona. Aceleração por placa de vídeo NÃO confirmada: o nome da placa está escondido ou não é reconhecido.',
     };
   }
-  return { status: 'AP', detail: 'WebGL 2 funciona com aceleração por placa de vídeo.' };
+  return { status: 'AP', detail: 'WebGL 2 funciona; o nome da placa indica aceleração por hardware (indicativo, não medido).' };
 }
 
 function num(v: unknown): number | null {
