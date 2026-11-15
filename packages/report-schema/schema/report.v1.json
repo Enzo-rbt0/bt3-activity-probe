@@ -1,0 +1,139 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://enzo-rbt0.github.io/bt3-activity-probe/schema/report.v1.json",
+  "title": "bt3probe.report/1",
+  "description": "Relatório de uma execução da Activity de diagnóstico (Experimento A). Sem nenhum identificador de usuário: servidor e canal só como sim/não, instância só como hash truncado.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "probe", "run", "context", "tests", "consents", "cleanup", "notes"],
+  "definitions": {
+    "status": { "type": "string", "enum": ["AP", "RP", "INV", "SKIP", "ERRO"] },
+    "nullableString": { "type": ["string", "null"], "maxLength": 512 },
+    "nullableNumber": { "type": ["number", "null"] },
+    "nullableBoolean": { "type": ["boolean", "null"] }
+  },
+  "properties": {
+    "schema": { "const": "bt3probe.report/1" },
+    "probe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "git_sha", "built_at", "sdk_version"],
+      "properties": {
+        "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+        "git_sha": { "type": "string", "pattern": "^([0-9a-f]{7,40}|desconhecido)$" },
+        "built_at": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$" },
+        "sdk_version": { "$ref": "#/definitions/nullableString" }
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "started_at", "duration_ms", "tz_offset_min"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+        "started_at": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$" },
+        "duration_ms": { "type": "number", "minimum": 0 },
+        "tz_offset_min": { "type": "integer" }
+      }
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode", "discord_platform", "mobile_app_version", "instance_hash", "in_guild", "in_channel",
+        "sdk_ready_ms", "sdk_error", "user_agent", "ua_ch", "viewport", "screen", "dpr",
+        "hardware_concurrency", "device_memory_gb", "device_label", "os_label", "network", "voice_call_active"
+      ],
+      "properties": {
+        "mode": { "type": "string", "enum": ["discord", "standalone"] },
+        "discord_platform": { "type": ["string", "null"], "enum": ["desktop", "mobile", null] },
+        "mobile_app_version": { "$ref": "#/definitions/nullableString" },
+        "instance_hash": { "type": ["string", "null"], "pattern": "^[0-9a-f]{12}$" },
+        "in_guild": { "$ref": "#/definitions/nullableBoolean" },
+        "in_channel": { "$ref": "#/definitions/nullableBoolean" },
+        "sdk_ready_ms": { "$ref": "#/definitions/nullableNumber" },
+        "sdk_error": { "$ref": "#/definitions/nullableString" },
+        "user_agent": { "type": "string", "maxLength": 1024 },
+        "ua_ch": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "properties": {
+            "platform": { "type": "string" },
+            "mobile": { "type": "boolean" },
+            "brands": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "viewport": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["width", "height"],
+          "properties": { "width": { "type": "number" }, "height": { "type": "number" } }
+        },
+        "screen": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["width", "height"],
+          "properties": { "width": { "type": "number" }, "height": { "type": "number" } }
+        },
+        "dpr": { "type": "number" },
+        "hardware_concurrency": { "$ref": "#/definitions/nullableNumber" },
+        "device_memory_gb": { "$ref": "#/definitions/nullableNumber" },
+        "device_label": { "type": "string", "maxLength": 120 },
+        "os_label": { "type": "string", "maxLength": 120 },
+        "network": { "type": "string", "enum": ["nao-informado", "cabo", "wifi", "4g", "5g", "outra"] },
+        "voice_call_active": { "$ref": "#/definitions/nullableBoolean" }
+      }
+    },
+    "tests": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["A-ENV", "A-GL2"],
+      "properties": {
+        "A-ENV": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "detail"],
+          "properties": {
+            "status": { "$ref": "#/definitions/status" },
+            "detail": { "type": "string", "maxLength": 500 }
+          }
+        },
+        "A-GL2": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status", "detail", "context_ok", "draw_ok", "renderer", "vendor", "software_renderer",
+            "max_texture_size", "max_renderbuffer_size", "max_samples", "max_viewport_dims", "extensions"
+          ],
+          "properties": {
+            "status": { "$ref": "#/definitions/status" },
+            "detail": { "type": "string", "maxLength": 500 },
+            "context_ok": { "type": "boolean" },
+            "draw_ok": { "type": "boolean" },
+            "renderer": { "$ref": "#/definitions/nullableString" },
+            "vendor": { "$ref": "#/definitions/nullableString" },
+            "software_renderer": { "$ref": "#/definitions/nullableBoolean" },
+            "max_texture_size": { "$ref": "#/definitions/nullableNumber" },
+            "max_renderbuffer_size": { "$ref": "#/definitions/nullableNumber" },
+            "max_samples": { "$ref": "#/definitions/nullableNumber" },
+            "max_viewport_dims": {
+              "type": ["array", "null"],
+              "items": { "type": "number" },
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "extensions": { "type": "array", "items": { "type": "string" }, "maxItems": 200 }
+          }
+        }
+      }
+    },
+    "consents": { "type": "array", "maxItems": 0 },
+    "cleanup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["needed", "performed"],
+      "properties": { "needed": { "type": "boolean" }, "performed": { "type": "boolean" } }
+    },
+    "notes": { "type": "string", "maxLength": 2000 }
+  }
+}

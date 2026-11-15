@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sonda BT3</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <main id="app">
+      <header>
+        <h1>Sonda de diagnóstico</h1>
+        <p class="sub">Experimento A · fase F1 · <span id="build"></span></p>
+        <p id="mode" class="mode">Detectando ambiente…</p>
+      </header>
+
+      <section aria-labelledby="t-res">
+        <h2 id="t-res">Resultados</h2>
+        <table id="results">
+          <thead><tr><th>Teste</th><th>Status</th><th>Detalhe</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <p class="legend">AP = aprovado · RP = reprovado · INV = inconclusivo · SKIP = não rodou · ERRO = falhou</p>
+      </section>
+
+      <section aria-labelledby="t-info">
+        <h2 id="t-info">Sobre este teste (você preenche)</h2>
+        <form id="human" autocomplete="off">
+          <label>Aparelho <input name="device_label" maxlength="120" placeholder="ex.: PC de casa, Galaxy A54" /></label>
+          <label>Sistema <input name="os_label" maxlength="120" placeholder="ex.: Windows 11, Android 14" /></label>
+          <label>Rede
+            <select name="network">
+              <option value="nao-informado">Não informar</option>
+              <option value="cabo">Cabo</option>
+              <option value="wifi">Wi-Fi</option>
+              <option value="4g">4G</option>
+              <option value="5g">5G</option>
+              <option value="outra">Outra</option>
+            </select>
+          </label>
+          <label>Em chamada de voz?
+            <select name="voice_call_active">
+              <option value="">Não informar</option>
+              <option value="sim">Sim</option>
+              <option value="nao">Não</option>
+            </select>
+          </label>
+          <label class="wide">Observações <textarea name="notes" maxlength="2000" rows="2"></textarea></label>
+        </form>
+      </section>
+
+      <section aria-labelledby="t-exp">
+        <h2 id="t-exp">Relatório</h2>
+        <p id="valid" class="valid"></p>
+        <div class="buttons">
+          <button id="download" type="button" disabled>Baixar JSON</button>
+          <button id="copy" type="button" disabled>Copiar JSON</button>
+        </div>
+        <p class="hint">Se o download não funcionar dentro do Discord, use “Copiar JSON” ou selecione o texto abaixo.</p>
+        <textarea id="json" readonly rows="10" aria-label="Relatório em JSON"></textarea>
+      </section>
+    </main>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>
