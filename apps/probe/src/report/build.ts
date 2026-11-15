@@ -1,4 +1,4 @@
-import type { ContextInfo, EnvResult, Gl2Result, HumanInput, Report } from './types';
+import type { ContextInfo, HumanInput, Report, Tests } from './types';
 
 export interface BuildInput {
   version: string;
@@ -11,13 +11,13 @@ export interface BuildInput {
   tzOffsetMin: number;
   context: Omit<ContextInfo, keyof Omit<HumanInput, 'notes'>>;
   human: HumanInput;
-  env: EnvResult;
-  gl2: Gl2Result;
+  tests: Tests;
+  cleanup: { needed: boolean; performed: boolean };
 }
 
 export function buildReport(i: BuildInput): Report {
   return {
-    schema: 'bt3probe.report/1',
+    schema: 'bt3probe.report/2',
     probe: { version: i.version, git_sha: i.gitSha, built_at: i.builtAt, sdk_version: i.sdkVersion },
     run: {
       id: i.runId,
@@ -32,16 +32,15 @@ export function buildReport(i: BuildInput): Report {
       network: i.human.network,
       voice_call_active: i.human.voice_call_active,
     },
-    tests: { 'A-ENV': i.env, 'A-GL2': i.gl2 },
-    // F1 não faz nenhum teste pesado: nada a consentir e nada a limpar.
+    tests: i.tests,
+    // A F2a não faz nenhum teste pesado: nada a consentir.
     consents: [],
-    cleanup: { needed: false, performed: false },
+    cleanup: i.cleanup,
     notes: i.human.notes.slice(0, 2000),
   };
 }
 
 export function reportFileName(r: Report): string {
   const stamp = r.run.started_at.replace(/[:.]/g, '-');
-  const where = r.context.mode === 'discord' ? (r.context.discord_platform ?? 'discord') : 'standalone';
-  return `bt3probe-${where}-${stamp}.json`;
+  return `bt3probe-${r.context.storage_context}-${stamp}.json`;
 }

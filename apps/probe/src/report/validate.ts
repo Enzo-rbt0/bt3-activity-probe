@@ -1,12 +1,17 @@
-import validateGenerated from '../../../../packages/report-schema/generated/validate-report.mjs';
+import validateV1 from '../../../../packages/report-schema/generated/validate-report-v1.mjs';
+import validateV2 from '../../../../packages/report-schema/generated/validate-report-v2.mjs';
 
 export interface ValidationResult { ok: boolean; errors: string[] }
 
-// Usa o validador pré-compilado (sem eval), seguro sob a Content Security Policy do Discord.
+const BY_SCHEMA = { 'bt3probe.report/1': validateV1, 'bt3probe.report/2': validateV2 } as const;
+
+// Usa os validadores pré-compilados (sem eval), seguros sob a Content Security Policy do Discord.
+// Escolhe a versão pelo campo "schema": relatórios da F1 (formato 1) continuam verificáveis.
 export function validateReport(data: unknown): ValidationResult {
-  const ok = validateGenerated(data);
-  const errors = ok
-    ? []
-    : (validateGenerated.errors ?? []).map((e) => `${e.instancePath || '/'} ${e.message ?? e.keyword}`);
+  const schema = (data as { schema?: unknown } | null)?.schema;
+  const v = typeof schema === 'string' ? BY_SCHEMA[schema as keyof typeof BY_SCHEMA] : undefined;
+  if (!v) return { ok: false, errors: [`/schema formato desconhecido: ${String(schema)}`] };
+  const ok = v(data);
+  const errors = ok ? [] : (v.errors ?? []).map((e) => `${e.instancePath || '/'} ${e.message ?? e.keyword}`);
   return { ok, errors };
 }

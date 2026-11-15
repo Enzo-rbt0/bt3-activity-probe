@@ -2,8 +2,8 @@
 // o handshake com o Discord funcionou? Nenhum identificador de usuário é coletado: servidor e canal
 // viram sim/não; a instância vira um hash curto.
 import { clip, shortHash } from '../hash';
-import type { UrlHints } from '../env';
-import type { ContextInfo, EnvResult, UaCh } from '../report/types';
+import { discordClient, storageContext, type UrlHints } from '../env';
+import type { ContextInfo, DiscordClient, EnvResult, UaCh } from '../report/types';
 
 export type EnvContext = Omit<ContextInfo, 'device_label' | 'os_label' | 'network' | 'voice_call_active'>;
 
@@ -17,7 +17,7 @@ export interface SdkOutcome {
   sdkVersion: string | null;
 }
 
-export function classifyEnv(hints: UrlHints, sdk: SdkOutcome | null): EnvResult {
+export function classifyEnv(hints: UrlHints, sdk: SdkOutcome | null, client: DiscordClient | null = null): EnvResult {
   if (hints.mode === 'standalone') {
     return { status: 'AP', detail: 'Fora do Discord (navegador comum). Coleta feita; o SDK não foi iniciado.' };
   }
@@ -25,7 +25,7 @@ export function classifyEnv(hints: UrlHints, sdk: SdkOutcome | null): EnvResult 
   if (!sdk.ready) {
     return { status: 'RP', detail: `Parece Discord, mas o handshake falhou: ${sdk.error ?? 'sem resposta'}.` };
   }
-  const where = hints.platform === 'mobile' ? 'Discord no celular' : 'Discord Desktop';
+  const where = hints.platform === 'mobile' ? 'Discord no celular' : client === 'web' ? 'Discord Web' : 'Discord Desktop';
   return { status: 'AP', detail: `${where}: handshake concluído em ${Math.round(sdk.readyMs ?? 0)} ms.` };
 }
 
@@ -42,9 +42,12 @@ function readUaCh(nav: Navigator): UaCh | null {
 export async function collectEnv(hints: UrlHints, sdk: SdkOutcome | null, win: Window = window): Promise<EnvContext> {
   const nav = win.navigator;
   const devMem = (nav as Navigator & { deviceMemory?: number }).deviceMemory;
+  const client = discordClient(hints, nav.userAgent);
   return {
     mode: hints.mode,
     discord_platform: hints.platform,
+    discord_client: client,
+    storage_context: storageContext(client),
     mobile_app_version: clip(hints.mobileAppVersion, 64),
     instance_hash: sdk?.instanceId ? await shortHash(sdk.instanceId) : null,
     in_guild: sdk ? sdk.guildId !== null && sdk.guildId !== '' : null,
