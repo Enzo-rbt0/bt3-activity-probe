@@ -17,7 +17,7 @@ export interface BuildInput {
 
 export function buildReport(i: BuildInput): Report {
   return {
-    schema: 'bt3probe.report/3',
+    schema: 'bt3probe.report/4',
     probe: { version: i.version, git_sha: i.gitSha, built_at: i.builtAt, sdk_version: i.sdkVersion },
     run: {
       id: i.runId,
@@ -33,7 +33,7 @@ export function buildReport(i: BuildInput): Report {
       voice_call_active: i.human.voice_call_active,
     },
     tests: i.tests,
-    // A F2a não faz nenhum teste pesado: nada a consentir.
+    // Nenhum teste pesado: nada a consentir.
     consents: [],
     cleanup: i.cleanup,
     notes: i.human.notes.slice(0, 2000),

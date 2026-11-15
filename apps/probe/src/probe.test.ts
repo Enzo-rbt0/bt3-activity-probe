@@ -4,6 +4,8 @@ import { clip, shortHash } from './hash';
 import { buildReport, reportFileName, type BuildInput } from './report/build';
 import { validateReport } from './report/validate';
 import { classifyEnv, type SdkOutcome } from './tests/a-env';
+import { KeyTest, PadTest, TouchTest } from './tests/b-input';
+import { AudioTest, FileBasicTest, FileLargeTest, FsTest } from './tests/b-media';
 import { classifyGl2, gpuAcceleration, isSoftwareRenderer } from './tests/a-gl2';
 import type { Gl2Result, Tests } from './report/types';
 import { FEATURE_KEYS } from './report/types';
@@ -134,6 +136,14 @@ function fullTests(): Tests {
     },
     'A-VIS': { status: 'AP', detail: 'ok', hidden: 1, visible: 1, pagehide: 0, blur: 2, focus: 2 },
     'I-BENCH': { status: 'AP', detail: 'ok', iterations: 20_000_000, wasm_ms: 20, js_ms: 25, same_result: true },
+    // Interativos no estado inicial ("ainda não feito").
+    'A-KEY': new KeyTest().result(),
+    'A-PAD': new PadTest(true).result(),
+    'A-TOUCH': new TouchTest(5).result(),
+    'A-FS': new FsTest(true).result(),
+    'A-AUDIO': new AudioTest().result(),
+    'A-FILE-BASIC': new FileBasicTest().result(),
+    'A-FILE-LARGE': new FileLargeTest().result(),
   };
 }
 
@@ -179,7 +189,7 @@ describe('relatório e schema', () => {
     const v = validateReport(r);
     expect(v.errors).toEqual([]);
     expect(v.ok).toBe(true);
-    expect(r.schema).toBe('bt3probe.report/3');
+    expect(r.schema).toBe('bt3probe.report/4');
     expect(r.run.duration_ms).toBe(813);
     expect(reportFileName(r)).toBe('bt3probe-discord-desktop-app-2026-11-15T12-05-00-000Z.json');
   });
@@ -214,13 +224,18 @@ describe('relatório e schema', () => {
     expect(validateReport({ ...f1, schema: 'bt3probe.report/2' }).ok).toBe(false);
     expect(validateReport({ ...f1, schema: 'bt3probe.report/9' }).ok).toBe(false);
   });
-  it('relatório da F2a (formato 2) continua válido no schema 2', () => {
+  it('relatórios da F2a (formato 2) e da F2b-0 (formato 3) continuam válidos', () => {
     const r = buildReport(input()) as unknown as Record<string, unknown> & { tests: Record<string, unknown> };
+    const { 'A-KEY': _1, 'A-PAD': _2, 'A-TOUCH': _3, 'A-FS': _4, 'A-AUDIO': _5, 'A-FILE-BASIC': _6, 'A-FILE-LARGE': _7, ...f2a } = r.tests;
+    const v3 = { ...r, schema: 'bt3probe.report/3', tests: f2a };
+    // Formato 3 (F2b-0, publicado na 0.2.1) continua válido; o formato 4 exige os testes da F2b.
+    expect(validateReport(v3).errors).toEqual([]);
+    expect(validateReport({ ...v3, schema: 'bt3probe.report/4' }).ok).toBe(false);
     const v2 = {
       ...r,
       schema: 'bt3probe.report/2',
       tests: {
-        ...r.tests,
+        ...f2a,
         'A-GL2': gl2v1,
         'A-IDB-PERSIST': {
           status: 'AP', detail: 'ok', storage_context: 'discord-mobile', marker_found: true, marker_age_s: 31,

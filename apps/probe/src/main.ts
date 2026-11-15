@@ -9,6 +9,7 @@ import { readEmccVersion, runAsyncifyCore, runEmcc, runJspiCore } from './tests/
 import { runGl2 } from './tests/a-gl2';
 import { PersistTest, runIdbReadWrite } from './tests/a-idb';
 import { LayoutWatcher, VisWatcher } from './tests/a-layout';
+import { mountInteractive } from './ui-interactive';
 import { CspCollector, fromB64, runBench, runWasmEmbed, runWasmFeat, runWasmUrl } from './tests/a-wasm';
 
 // Começa a ouvir bloqueios de CSP antes de qualquer teste.
@@ -55,6 +56,13 @@ const LABELS: Record<keyof Tests, string> = {
   'A-LAYOUT': 'A-LAYOUT · tela',
   'A-VIS': 'A-VIS · minimizar e voltar',
   'I-BENCH': 'I-BENCH · conta (informativo)',
+  'A-KEY': 'A-KEY · teclado',
+  'A-PAD': 'A-PAD · controle',
+  'A-TOUCH': 'A-TOUCH · toque',
+  'A-FS': 'A-FS · tela cheia',
+  'A-AUDIO': 'A-AUDIO · áudio',
+  'A-FILE-BASIC': 'A-FILE-BASIC · arquivo comum',
+  'A-FILE-LARGE': 'A-FILE-LARGE · arquivo > 2 GiB',
 };
 const GROUPS: [string, (keyof Tests)[]][] = [
   ['Ambiente e gráfico', ['A-ENV', 'A-GL2']],
@@ -62,6 +70,7 @@ const GROUPS: [string, (keyof Tests)[]][] = [
   ['Pausar e retomar (JSPI / Asyncify)', ['A-JSPI-CORE', 'A-ASYNCIFY-CORE', 'A-JSPI-EMCC', 'A-ASYNCIFY-EMCC']],
   ['Armazenamento', ['A-IDB', 'A-IDB-PERSIST']],
   ['Tela', ['A-LAYOUT', 'A-VIS']],
+  ['Interação (F2b)', ['A-KEY', 'A-PAD', 'A-TOUCH', 'A-FS', 'A-AUDIO', 'A-FILE-BASIC', 'A-FILE-LARGE']],
 ];
 
 function renderTable(tests: Tests): void {
@@ -131,6 +140,7 @@ async function main(): Promise<void> {
   let refresh = () => {};
   const layout = new LayoutWatcher(window, () => refresh());
   const vis = new VisWatcher(window, () => refresh());
+  const interactive = mountInteractive($('interactive'), () => refresh());
 
   const gl2 = runGl2();
 
@@ -191,6 +201,7 @@ async function main(): Promise<void> {
       'A-LAYOUT': layout.result(),
       'A-VIS': vis.result(),
       'I-BENCH': bench,
+      ...interactive(),
     };
     current = buildReport({
       version: __PROBE_VERSION__,
@@ -212,7 +223,7 @@ async function main(): Promise<void> {
     persistUi();
     const v = validateReport(current);
     area.value = JSON.stringify(current, null, 2);
-    validEl.textContent = v.ok ? 'Relatório válido (schema bt3probe.report/3).' : `Relatório inválido: ${v.errors.join('; ')}`;
+    validEl.textContent = v.ok ? 'Relatório válido (schema bt3probe.report/4).' : `Relatório inválido: ${v.errors.join('; ')}`;
     validEl.className = `valid ${v.ok ? 'ok' : 'bad'}`;
     document.body.dataset.reportValid = String(v.ok);
   };

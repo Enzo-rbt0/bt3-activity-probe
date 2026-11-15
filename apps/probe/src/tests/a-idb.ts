@@ -147,8 +147,19 @@ export class PersistTest {
     const old = await this.withDb((db) => op(db, 'readonly', (s) => s.get(legacyKey(this.ctx)) as IDBRequest<LegacyMarker | undefined>));
     if (!old || old.ctx !== this.ctx || typeof old.created_at !== 'number') return undefined;
     const rec: PersistRecord = { state: 'pending', ctx: this.ctx, created_at: old.created_at };
-    await this.save(rec);
-    await this.withDb((db) => op(db, 'readwrite', (s) => s.delete(legacyKey(this.ctx))));
+    // Grava a chave nova e apaga a antiga na MESMA transação: ou as duas acontecem, ou nenhuma.
+    await this.withDb(
+      (db) =>
+        new Promise<void>((resolve, reject) => {
+          const tx = db.transaction(STORE, 'readwrite');
+          const s = tx.objectStore(STORE);
+          s.put(rec, key(this.ctx));
+          s.delete(legacyKey(this.ctx));
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => reject(tx.error);
+          tx.onabort = () => reject(tx.error ?? new Error('migração abortada'));
+        }),
+    );
     this.state = { ...this.state, legacy_migrated: true };
     return rec;
   }
