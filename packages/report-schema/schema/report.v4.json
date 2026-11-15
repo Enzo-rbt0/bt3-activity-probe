@@ -1,0 +1,1429 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://enzo-rbt0.github.io/bt3-activity-probe/schema/report.v4.json",
+  "title": "bt3probe.report/4",
+  "description": "Relatório da sonda a partir da F2b: acrescenta os testes interativos (teclado, controle, toque, tela cheia, áudio, arquivos). Sem nome de arquivo, conteúdo, nome do controle ou texto digitado. Formatos 1 a 3 continuam válidos nos próprios schemas.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "probe",
+    "run",
+    "context",
+    "tests",
+    "consents",
+    "cleanup",
+    "notes"
+  ],
+  "definitions": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "AP",
+        "RP",
+        "INV",
+        "SKIP",
+        "ERRO"
+      ]
+    },
+    "str": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 512
+    },
+    "num": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "int": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "bool": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "detail": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "size": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "width",
+        "height"
+      ],
+      "properties": {
+        "width": {
+          "type": "number"
+        },
+        "height": {
+          "type": "number"
+        }
+      }
+    },
+    "async": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "detail",
+        "result",
+        "ms",
+        "error"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/definitions/status"
+        },
+        "detail": {
+          "$ref": "#/definitions/detail"
+        },
+        "api_present": {
+          "type": "boolean"
+        },
+        "emcc_version": {
+          "$ref": "#/definitions/str"
+        },
+        "result": {
+          "$ref": "#/definitions/int"
+        },
+        "ms": {
+          "$ref": "#/definitions/num"
+        },
+        "error": {
+          "$ref": "#/definitions/str"
+        }
+      }
+    },
+    "strArr": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 40
+      },
+      "maxItems": 40
+    },
+    "intArr": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "maxItems": 40
+    }
+  },
+  "properties": {
+    "schema": {
+      "const": "bt3probe.report/4"
+    },
+    "probe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "git_sha",
+        "built_at",
+        "sdk_version"
+      ],
+      "properties": {
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "git_sha": {
+          "type": "string",
+          "pattern": "^([0-9a-f]{7,40}|desconhecido)$"
+        },
+        "built_at": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$"
+        },
+        "sdk_version": {
+          "$ref": "#/definitions/str"
+        }
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "started_at",
+        "duration_ms",
+        "tz_offset_min"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "started_at": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$"
+        },
+        "duration_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "tz_offset_min": {
+          "type": "integer"
+        }
+      }
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "discord_platform",
+        "discord_client",
+        "storage_context",
+        "mobile_app_version",
+        "instance_hash",
+        "in_guild",
+        "in_channel",
+        "sdk_ready_ms",
+        "sdk_error",
+        "user_agent",
+        "ua_ch",
+        "viewport",
+        "screen",
+        "dpr",
+        "hardware_concurrency",
+        "device_memory_gb",
+        "device_label",
+        "os_label",
+        "network",
+        "voice_call_active"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "discord",
+            "standalone"
+          ]
+        },
+        "discord_platform": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "desktop",
+            "mobile",
+            null
+          ]
+        },
+        "discord_client": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "desktop-app",
+            "web",
+            "mobile",
+            null
+          ]
+        },
+        "storage_context": {
+          "type": "string",
+          "enum": [
+            "standalone",
+            "discord-desktop-app",
+            "discord-web",
+            "discord-mobile"
+          ]
+        },
+        "mobile_app_version": {
+          "$ref": "#/definitions/str"
+        },
+        "instance_hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{12}$"
+        },
+        "in_guild": {
+          "$ref": "#/definitions/bool"
+        },
+        "in_channel": {
+          "$ref": "#/definitions/bool"
+        },
+        "sdk_ready_ms": {
+          "$ref": "#/definitions/num"
+        },
+        "sdk_error": {
+          "$ref": "#/definitions/str"
+        },
+        "user_agent": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "ua_ch": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "platform": {
+              "type": "string"
+            },
+            "mobile": {
+              "type": "boolean"
+            },
+            "brands": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "viewport": {
+          "$ref": "#/definitions/size"
+        },
+        "screen": {
+          "$ref": "#/definitions/size"
+        },
+        "dpr": {
+          "type": "number"
+        },
+        "hardware_concurrency": {
+          "$ref": "#/definitions/num"
+        },
+        "device_memory_gb": {
+          "$ref": "#/definitions/num"
+        },
+        "device_label": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "os_label": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "network": {
+          "type": "string",
+          "enum": [
+            "nao-informado",
+            "cabo",
+            "wifi",
+            "4g",
+            "5g",
+            "outra"
+          ]
+        },
+        "voice_call_active": {
+          "$ref": "#/definitions/bool"
+        }
+      }
+    },
+    "tests": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "A-ENV",
+        "A-GL2",
+        "A-WASM-EMBED",
+        "A-WASM-URL",
+        "A-CSP",
+        "A-WASM-FEAT",
+        "A-JSPI-CORE",
+        "A-ASYNCIFY-CORE",
+        "A-JSPI-EMCC",
+        "A-ASYNCIFY-EMCC",
+        "A-IDB",
+        "A-IDB-PERSIST",
+        "A-LAYOUT",
+        "A-VIS",
+        "I-BENCH",
+        "A-KEY",
+        "A-PAD",
+        "A-TOUCH",
+        "A-FS",
+        "A-AUDIO",
+        "A-FILE-BASIC",
+        "A-FILE-LARGE"
+      ],
+      "properties": {
+        "A-ENV": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "detail"
+          ],
+          "properties": {
+            "status": {
+              "$ref": "#/definitions/status"
+            },
+            "detail": {
+              "$ref": "#/definitions/detail"
+            }
+          }
+        },
+        "A-GL2": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "detail",
+            "context_ok",
+            "draw_ok",
+            "renderer",
+            "vendor",
+            "software_renderer",
+            "gpu_acceleration_status",
+            "max_texture_size",
+            "max_renderbuffer_size",
+            "max_samples",
+            "max_viewport_dims",
+            "extensions"
+          ],
+          "properties": {
+            "status": {
+              "$ref": "#/definitions/status"
+            },
+            "detail": {
+              "$ref": "#/definitions/detail"
+            },
+            "context_ok": {
+              "type": "boolean"
+            },
+            "draw_ok": {
+              "type": "boolean"
+            },
+            "renderer": {
+              "$ref": "#/definitions/str"
+            },
+            "vendor": {
+              "$ref": "#/definitions/str"
+            },
+            "software_renderer": {
+              "$ref": "#/definitions/bool"
+            },
+            "max_texture_size": {
+              "$ref": "#/definitions/num"
+            },
+            "max_renderbuffer_size": {
+              "$ref": "#/definitions/num"
+            },
+            "max_samples": {
+              "$ref": "#/definitions/num"
+            },
+            "max_viewport_dims": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "number"
+              },
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "extensions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 200
+            },
+            "gpu_acceleration_status": {
+              "type": "string",
+              "enum": [
+                "confirmed",
+                "software",
+                "unknown",
+                "none"
+              ]
+            }
+          }
+        },
+        "A-WASM-EMBED": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "detail",
+            "result_ok",
+            "compile_ms",
+            "error"
+          ],
+          "properties": {
+            "status": {
+              "$ref": "#/definitions/status"
+            },
+            "detail": {
+              "$ref": "#/definitions/detail"
+            },
+            "result_ok": {
+              "type": "boolean"
+            },
+            "compile_ms": {
+              "$ref": "#/definitions/num"
+            },
+            "error": {
+              "$ref": "#/definitions/str"
+            }
+          }
+        },
+        "A-WASM-URL": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "detail",
+            "http_status",
+            "content_type",
+            "bytes",
+            "streaming_ok",
+            "fallback_ok",
+            "ms",
+            "error"
+          ],
+          "properties": {
+            "status": {
+              "$ref": "#/definitions/status"
+            },
+            "detail": {
+              "$ref": "#/definitions/detail"
+            },
+            "http_status": {
+              "$ref": "#/definitions/int"
+            },
+            "content_type": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 100
+            },
+            "bytes": {
+              "$ref": "#/definitions/int"
+            },
+            "streaming_ok": {
+              "$ref": "#/definitions/bool"
+            },
+            "fallback_ok": {
+              "$ref": "#/definitions/bool"
+            },
+            "ms": {
+              "$ref": "#/definitions/num"
+            },
+            "error": {
+              "$ref": "#/definitions/str"
+            }
+          }
+        },
+        "A-CSP": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "detail",
+            "violations"
+          ],
+          "properties": {
+            "status": {
+              "$ref": "#/definitions/status"
+            },
+            "detail": {
+              "$ref": "#/definitions/detail"
+            },
+            "violations": {
+              "type": "array",
+              "maxItems": 50,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "directive",
+                  "disposition",
+                  "category",
+                  "count"
+                ],
+                "properties": {
+                  "directive": {
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  "disposition": {
+                    "type": "string",
+                    "enum": [
+                      "enforce",
+                      "report",
+                      "desconhecido"
+                    ]
+                  },
+                  "category": {
+                    "type": "string",
+                    "enum": [
+                      "wasm-eval",
+                      "eval",
+                      "inline",
+                      "mesma-origem",
+                      "outra-origem",
+                      "data",
+                      "blob",
+                      "outro"
+                    ]
+                  },
+                  "count": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "A-WASM-FEAT": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "detail",
+            "features",
+            "jspi_api",
+            "shared_array_buffer",
+            "cross_origin_isolated"
+          ],
+          "properties": {
+            "status": {
+              "$ref": "#/definitions/status"
+            },
+            "detail": {
+              "$ref": "#/definitions/detail"
+            },
+            "features": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "simd",
+                "bulk_memory",
+                "exceptions",
+                "multi_value",
+                "tail_call",
+                "sat_float_to_int",
+                "sign_ext"
+              ],
+              "properties": {
+                "simd": {
+                  "$ref": "#/definitions/bool"
+                },
+                "bulk_memory": {
+                  "$ref": "#/definitions/bool"
+                },
+                "exceptions": {
+                  "$ref": "#/definitions/bool"
+                },
+                "multi_value": {
+                  "$ref": "#/definitions/bool"
+                },
+                "tail_call": {
+                  "$ref": "#/definitions/bool"
+                },
+                "sat_float_to_int": {
+                  "$ref": "#/definitions/bool"
+                },
+                "sign_ext": {
+                  "$ref": "#/definitions/bool"
+                }
+              }
+            },
+            "jspi_api": {
+              "type": "boolean"
+            },
+            "shared_array_buffer": {
+              "type": "boolean"
+            },
+            "cross_origin_isolated": {
+              "type": "boolean"
+            }
+          }
+        },
+        "A-JSPI-CORE": {
+          "$ref": "#/definitions/async"
+        },
+        "A-ASYNCIFY-CORE": {
+          "$ref": "#/definitions/async"
+        },
+        "A-JSPI-EMCC": {
+          "$ref": "#/definitions/async"
+        },
+        "A-ASYNCIFY-EMCC": {
+          "$ref": "#/definitions/async"
+        },
+        "A-IDB": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "detail",
+            "read_write_ok",
+            "quota_mb",
+            "usage_mb",
+            "persisted",
+            "error"
+          ],
+          "properties": {
+            "status": {
+              "$ref": "#/definitions/status"
+            },
+            "detail": {
+              "$ref": "#/definitions/detail"
+            },
+            "read_write_ok": {
+              "type": "boolean"
+            },
+            "quota_mb": {
+              "$ref": "#/definitions/num"
+            },
+            "usage_mb": {
+              "$ref": "#/definitions/num"
+            },
+            "persisted": {
+              "$ref": "#/definitions/bool"
+            },
+            "error": {
+              "$ref": "#/definitions/str"
+            }
+          }
+        },
+        "A-IDB-PERSIST": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "detail",
+            "storage_context",
+            "state_at_open",
+            "state_now",
+            "marker_age_s",
+            "last_confirmed_age_s",
+            "marker_written_this_session",
+            "user_reported_missing",
+            "receipt_saved",
+            "legacy_migrated"
+          ],
+          "properties": {
+            "status": {
+              "$ref": "#/definitions/status"
+            },
+            "detail": {
+              "$ref": "#/definitions/detail"
+            },
+            "storage_context": {
+              "type": "string",
+              "enum": [
+                "standalone",
+                "discord-desktop-app",
+                "discord-web",
+                "discord-mobile"
+              ]
+            },
+            "state_at_open": {
+              "type": "string",
+              "enum": [
+                "none",
+                "pending",
+                "confirmed",
+                "cancelled"
+              ]
+            },
+            "state_now": {
+              "type": "string",
+              "enum": [
+                "none",
+                "pending",
+                "confirmed",
+                "cancelled"
+              ]
+            },
+            "marker_age_s": {
+              "$ref": "#/definitions/num"
+            },
+            "last_confirmed_age_s": {
+              "$ref": "#/definitions/num"
+            },
+            "marker_written_this_session": {
+              "type": "boolean"
+            },
+            "user_reported_missing": {
+              "type": "boolean"
+            },
+            "receipt_saved": {
+              "$ref": "#/definitions/bool"
+            },
+            "legacy_migrated": {
+              "type": "boolean"
+            }
+          }
+        },
+        "A-LAYOUT": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "detail",
+            "orientation_type",
+            "orientation_angle",
+            "visual_viewport",
+            "safe_area",
+            "changes"
+          ],
+          "properties": {
+            "status": {
+              "$ref": "#/definitions/status"
+            },
+            "detail": {
+              "$ref": "#/definitions/detail"
+            },
+            "orientation_type": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 40
+            },
+            "orientation_angle": {
+              "$ref": "#/definitions/num"
+            },
+            "visual_viewport": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "additionalProperties": false,
+              "required": [
+                "width",
+                "height",
+                "scale"
+              ],
+              "properties": {
+                "width": {
+                  "type": "number"
+                },
+                "height": {
+                  "type": "number"
+                },
+                "scale": {
+                  "type": "number"
+                }
+              }
+            },
+            "safe_area": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "top",
+                "right",
+                "bottom",
+                "left"
+              ],
+              "properties": {
+                "top": {
+                  "type": "number"
+                },
+                "right": {
+                  "type": "number"
+                },
+                "bottom": {
+                  "type": "number"
+                },
+                "left": {
+                  "type": "number"
+                }
+              }
+            },
+            "changes": {
+              "type": "array",
+              "maxItems": 30,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "t_ms",
+                  "width",
+                  "height",
+                  "orientation_type"
+                ],
+                "properties": {
+                  "t_ms": {
+                    "type": "number"
+                  },
+                  "width": {
+                    "type": "number"
+                  },
+                  "height": {
+                    "type": "number"
+                  },
+                  "orientation_type": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 40
+                  }
+                }
+              }
+            }
+          }
+        },
+        "A-VIS": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "detail",
+            "hidden",
+            "visible",
+            "pagehide",
+            "blur",
+            "focus"
+          ],
+          "properties": {
+            "status": {
+              "$ref": "#/definitions/status"
+            },
+            "detail": {
+              "$ref": "#/definitions/detail"
+            },
+            "hidden": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "visible": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "pagehide": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "blur": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "focus": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "I-BENCH": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "detail",
+            "iterations",
+            "wasm_ms",
+            "js_ms",
+            "same_result"
+          ],
+          "properties": {
+            "status": {
+              "$ref": "#/definitions/status"
+            },
+            "detail": {
+              "$ref": "#/definitions/detail"
+            },
+            "iterations": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "wasm_ms": {
+              "$ref": "#/definitions/num"
+            },
+            "js_ms": {
+              "$ref": "#/definitions/num"
+            },
+            "same_result": {
+              "$ref": "#/definitions/bool"
+            }
+          }
+        },
+        "A-KEY": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "detail",
+            "keys_expected",
+            "keys_received",
+            "keys_missing",
+            "combos",
+            "max_held",
+            "escape_received",
+            "focus_lost"
+          ],
+          "properties": {
+            "status": {
+              "$ref": "#/definitions/status"
+            },
+            "detail": {
+              "$ref": "#/definitions/detail"
+            },
+            "keys_expected": {
+              "$ref": "#/definitions/strArr"
+            },
+            "keys_received": {
+              "$ref": "#/definitions/strArr"
+            },
+            "keys_missing": {
+              "$ref": "#/definitions/strArr"
+            },
+            "combos": {
+              "type": "array",
+              "maxItems": 4,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "keys",
+                  "ok"
+                ],
+                "properties": {
+                  "keys": {
+                    "$ref": "#/definitions/strArr"
+                  },
+                  "ok": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            },
+            "max_held": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "escape_received": {
+              "$ref": "#/definitions/bool"
+            },
+            "focus_lost": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "A-PAD": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "detail",
+            "api_present",
+            "blocked",
+            "error",
+            "pad_detected",
+            "pad_type",
+            "mapping",
+            "buttons_count",
+            "axes_count",
+            "buttons_tested",
+            "left_stick",
+            "right_stick",
+            "triggers_tested",
+            "focus_regained",
+            "input_after_refocus",
+            "triggers_verifiable"
+          ],
+          "properties": {
+            "status": {
+              "$ref": "#/definitions/status"
+            },
+            "detail": {
+              "$ref": "#/definitions/detail"
+            },
+            "api_present": {
+              "type": "boolean"
+            },
+            "blocked": {
+              "type": "boolean"
+            },
+            "error": {
+              "$ref": "#/definitions/str"
+            },
+            "pad_detected": {
+              "type": "boolean"
+            },
+            "pad_type": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                "xbox",
+                "playstation",
+                "outro",
+                null
+              ]
+            },
+            "mapping": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 20
+            },
+            "buttons_count": {
+              "$ref": "#/definitions/int"
+            },
+            "axes_count": {
+              "$ref": "#/definitions/int"
+            },
+            "buttons_tested": {
+              "$ref": "#/definitions/intArr"
+            },
+            "left_stick": {
+              "type": "boolean"
+            },
+            "right_stick": {
+              "type": "boolean"
+            },
+            "triggers_tested": {
+              "$ref": "#/definitions/intArr"
+            },
+            "focus_regained": {
+              "type": "boolean"
+            },
+            "input_after_refocus": {
+              "$ref": "#/definitions/bool"
+            },
+            "triggers_verifiable": {
+              "$ref": "#/definitions/bool"
+            }
+          }
+        },
+        "A-TOUCH": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "detail",
+            "touch_capable",
+            "max_touch_points",
+            "max_simultaneous",
+            "drag_ok",
+            "cancels"
+          ],
+          "properties": {
+            "status": {
+              "$ref": "#/definitions/status"
+            },
+            "detail": {
+              "$ref": "#/definitions/detail"
+            },
+            "touch_capable": {
+              "type": "boolean"
+            },
+            "max_touch_points": {
+              "$ref": "#/definitions/int"
+            },
+            "max_simultaneous": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "drag_ok": {
+              "type": "boolean"
+            },
+            "cancels": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "A-FS": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "detail",
+            "fullscreen_enabled",
+            "entered",
+            "exited",
+            "error",
+            "size"
+          ],
+          "properties": {
+            "status": {
+              "$ref": "#/definitions/status"
+            },
+            "detail": {
+              "$ref": "#/definitions/detail"
+            },
+            "fullscreen_enabled": {
+              "$ref": "#/definitions/bool"
+            },
+            "entered": {
+              "type": "boolean"
+            },
+            "exited": {
+              "type": "boolean"
+            },
+            "error": {
+              "$ref": "#/definitions/str"
+            },
+            "size": {
+              "oneOf": [
+                {
+                  "$ref": "#/definitions/size"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        },
+        "A-AUDIO": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "detail",
+            "state_before_gesture",
+            "state_after_gesture",
+            "sample_rate",
+            "base_latency_ms",
+            "output_latency_ms",
+            "heard",
+            "during_call"
+          ],
+          "properties": {
+            "status": {
+              "$ref": "#/definitions/status"
+            },
+            "detail": {
+              "$ref": "#/definitions/detail"
+            },
+            "state_before_gesture": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 20
+            },
+            "state_after_gesture": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 20
+            },
+            "sample_rate": {
+              "$ref": "#/definitions/num"
+            },
+            "base_latency_ms": {
+              "$ref": "#/definitions/num"
+            },
+            "output_latency_ms": {
+              "$ref": "#/definitions/num"
+            },
+            "heard": {
+              "$ref": "#/definitions/bool"
+            },
+            "during_call": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "additionalProperties": false,
+              "required": [
+                "heard",
+                "call_voice_ok"
+              ],
+              "properties": {
+                "heard": {
+                  "$ref": "#/definitions/bool"
+                },
+                "call_voice_ok": {
+                  "$ref": "#/definitions/bool"
+                }
+              }
+            }
+          }
+        },
+        "A-FILE-BASIC": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "detail",
+            "picker_opened",
+            "cancelled",
+            "size",
+            "type_category",
+            "reads"
+          ],
+          "properties": {
+            "status": {
+              "$ref": "#/definitions/status"
+            },
+            "detail": {
+              "$ref": "#/definitions/detail"
+            },
+            "picker_opened": {
+              "type": "boolean"
+            },
+            "cancelled": {
+              "type": "boolean"
+            },
+            "size": {
+              "$ref": "#/definitions/num"
+            },
+            "type_category": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                "imagem",
+                "video",
+                "audio",
+                "outro",
+                null
+              ]
+            },
+            "reads": {
+              "type": "array",
+              "maxItems": 3,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "where",
+                  "bytes",
+                  "ms",
+                  "ok"
+                ],
+                "properties": {
+                  "where": {
+                    "type": "string",
+                    "enum": [
+                      "inicio",
+                      "meio",
+                      "fim"
+                    ]
+                  },
+                  "bytes": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "ms": {
+                    "type": "number"
+                  },
+                  "ok": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "A-FILE-LARGE": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "detail",
+            "picker_opened",
+            "cancelled",
+            "size",
+            "over_2gib",
+            "markers"
+          ],
+          "properties": {
+            "status": {
+              "$ref": "#/definitions/status"
+            },
+            "detail": {
+              "$ref": "#/definitions/detail"
+            },
+            "picker_opened": {
+              "type": "boolean"
+            },
+            "cancelled": {
+              "type": "boolean"
+            },
+            "size": {
+              "$ref": "#/definitions/num"
+            },
+            "over_2gib": {
+              "$ref": "#/definitions/bool"
+            },
+            "markers": {
+              "type": "array",
+              "maxItems": 3,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "where",
+                  "ok",
+                  "ms"
+                ],
+                "properties": {
+                  "where": {
+                    "type": "string",
+                    "enum": [
+                      "inicio",
+                      "apos_2gib",
+                      "fim"
+                    ]
+                  },
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "ms": {
+                    "$ref": "#/definitions/num"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "consents": {
+      "type": "array",
+      "maxItems": 0
+    },
+    "cleanup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "needed",
+        "performed"
+      ],
+      "properties": {
+        "needed": {
+          "type": "boolean"
+        },
+        "performed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "notes": {
+      "type": "string",
+      "maxLength": 2000
+    }
+  }
+}

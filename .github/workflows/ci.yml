@@ -39,3 +39,14 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Teste de fumaça (fora do Discord)
         run: npm run smoke
+
+  # Testa o criar-arquivo-teste.ps1 num Windows de verdade (PowerShell 5.1, o mesmo do usuário),
+  # em pastas temporárias apagadas no fim. Não publica nada e não guarda o arquivo como artefato.
+  script-windows:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Script do arquivo de teste no Windows
+        shell: powershell
+        run: .\scripts\ci\testar-script-windows.ps1

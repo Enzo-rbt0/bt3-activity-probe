@@ -10,7 +10,7 @@
     <main id="app">
       <header>
         <h1>Sonda de diagnóstico</h1>
-        <p class="sub">Experimento A · fase F2b-0 · <span id="build"></span></p>
+        <p class="sub">Experimento A · fase F2b · <span id="build"></span></p>
         <p id="mode" class="mode">Detectando ambiente…</p>
       </header>
 
@@ -21,6 +21,12 @@
           <tbody></tbody>
         </table>
         <p class="legend">AP = aprovado · RP = reprovado · INV = inconclusivo · SKIP = não rodou · ERRO = falhou</p>
+      </section>
+
+      <section aria-labelledby="t-int">
+        <h2 id="t-int">Testes interativos (F2b)</h2>
+        <p class="hint">Faça na ordem que quiser; cada um pode ser pulado. O relatório no fim da página é atualizado sozinho.</p>
+        <div id="interactive"></div>
       </section>
 
       <section aria-labelledby="t-persist">

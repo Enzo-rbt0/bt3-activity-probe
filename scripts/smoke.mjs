@@ -1,20 +1,25 @@
 // Teste de fumaça: abre a build pronta (apps/probe/dist) num Chromium sem tela e confere que a sonda
-// termina e produz um relatório válido (formato 3). Cenários:
+// termina e produz um relatório válido (formato 4). Cenários:
 //   1. standalone: WebAssembly, JSPI/Asyncify, IndexedDB e o save entre sessões (grava, recarrega,
 //      encontra) funcionando fora do Discord;
 //   2. URL com parâmetros do Discord falsos e sem Discord por trás: A-ENV = RP depois de 10 s;
 //   3. CSP restrita, SEM permissão para WebAssembly: a sonda não trava, A-WASM-EMBED = RP e o
 //      bloqueio aparece em A-CSP. (Simulação: a CSP real do Discord só é medida lá dentro.)
+//   4. Interativos (F2b) com teclado, toque de vários dedos, tela cheia, áudio e os dois arquivos.
+//      O arquivo de 3 GiB é esparso, criado numa pasta temporária fora do repositório e apagado no
+//      fim; nunca vira artefato. O controle não é simulável: espera-se INV (API sem controle).
 // Fora do Discord isso prova que o CÓDIGO funciona; não prova nada sobre o Discord.
 // Também falha se a build contiver eval/new Function. Pré-requisito: `npm run build`.
 // REQUIRE_EMCC=1 (CI) exige que os testes do Emscripten rodem e passem.
 // PROBE_PW_MODULE aponta para outro pacote playwright (Chromium já instalado em outro lugar).
 import { spawn } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import validate from '../packages/report-schema/generated/validate-report-v3.mjs';
+import { create as createLarge } from './criar-arquivo-teste.mjs';
+import validate from '../packages/report-schema/generated/validate-report-v4.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const dist = join(root, 'apps/probe/dist');
@@ -157,6 +162,73 @@ try {
     }
     if (JSON.stringify(r.tests['A-CSP']).includes('http')) fail('csp-sem-wasm: A-CSP guardou URL');
     await ctx.close();
+  }
+  // Cenário 4: testes interativos.
+  {
+    const tmp = mkdtempSync(join(tmpdir(), 'bt3probe-smoke-'));
+    try {
+      const largePath = createLarge(tmp);
+      const ctx = await browser.newContext({ hasTouch: true, viewport: { width: 900, height: 900 } });
+      const page = await ctx.newPage();
+      const errors = [];
+      page.on('pageerror', (e) => errors.push(String(e)));
+      await openProbe(page, '', 20_000);
+      const btn = (cardId, name) => page.locator(`#card-${cardId}`).getByRole('button', { name, exact: true });
+
+      // Teclado: teclas soltas, 2 combinações e Esc por último.
+      await btn('A-KEY', 'Começar').click();
+      for (const k of ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Enter']) {
+        await page.keyboard.press(k);
+      }
+      for (const combo of [['KeyW', 'KeyD', 'Space'], ['KeyW', 'Shift', 'Space']]) {
+        for (const k of combo) await page.keyboard.down(k);
+        for (const k of combo) await page.keyboard.up(k);
+      }
+      await btn('A-KEY', 'Concluir teclas').click();
+      await btn('A-KEY', 'Testar Esc (5 s)').click();
+      await page.keyboard.press('Escape');
+
+      // Controle: sem controle na CI → INV ("API existe, controle não apareceu").
+      await btn('A-PAD', 'Começar').click();
+      await btn('A-PAD', 'Concluir').click();
+
+      // Toque: 2 dedos juntos e um arrasto, via eventos de toque do Chromium.
+      await page.locator('#touch-area').scrollIntoViewIfNeeded();
+      const box = await page.locator('#touch-area').boundingBox();
+      const cdp = await ctx.newCDPSession(page);
+      const pt = (x, y, id) => ({ x: box.x + x, y: box.y + y, id });
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [pt(40, 60, 1), pt(120, 60, 2)] });
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [pt(20, 90, 3)] });
+      for (let x = 40; x <= 220; x += 30) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [pt(x, 90, 3)] });
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await btn('A-TOUCH', 'Concluir').click();
+
+      // Tela cheia (AP ou RP: no Chromium sem tela pode variar) e áudio.
+      await btn('A-FS', 'Tela cheia').click();
+      await btn('A-AUDIO', 'Tocar som').click();
+      await btn('A-AUDIO', 'Ouvi').click();
+
+      // Arquivos: um comum (10 KB) e o de teste de 3 GiB com marcadores.
+      await page.setInputFiles('#file-basic', { name: 'foto-pessoal.jpg', mimeType: 'image/jpeg', buffer: Buffer.alloc(10_000, 7) });
+      await page.setInputFiles('#file-large', largePath);
+      await page.waitForFunction(() => {
+        const t = JSON.parse(document.querySelector('#json').value).tests;
+        return t['A-FILE-LARGE'].status !== 'SKIP' && t['A-FILE-BASIC'].status !== 'SKIP' && t['A-KEY'].escape_received !== null;
+      }, undefined, { timeout: 20_000 });
+      await page.waitForTimeout(2600); // a tela cheia sai sozinha em 2 s
+      const r = JSON.parse(await page.inputValue('#json'));
+      check('interativos', r, {
+        'A-KEY': ['AP'], 'A-PAD': ['INV'], 'A-TOUCH': ['AP'], 'A-FS': ['AP', 'RP'], 'A-AUDIO': ['AP'],
+        'A-FILE-BASIC': ['AP'], 'A-FILE-LARGE': ['AP'],
+      });
+      const json = JSON.stringify(r);
+      if (json.includes('foto-pessoal') || json.includes('bt3probe-large')) fail('interativos: nome de arquivo foi para o relatório');
+      if (errors.length) fail(`interativos: erros na página: ${errors.join(' | ')}`);
+      await ctx.close();
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
   }
 } catch (e) {
   fail(String(e?.stack ?? e));

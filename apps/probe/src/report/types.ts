@@ -127,6 +127,79 @@ export interface BenchResult extends Basic {
   same_result: boolean | null;
 }
 
+export interface KeyResult extends Basic {
+  keys_expected: string[];
+  keys_received: string[];
+  keys_missing: string[];
+  combos: { keys: string[]; ok: boolean }[];
+  max_held: number;
+  escape_received: boolean | null;
+  focus_lost: number;
+}
+
+export type PadType = 'xbox' | 'playstation' | 'outro';
+export interface PadResult extends Basic {
+  api_present: boolean;
+  blocked: boolean;
+  error: string | null;
+  pad_detected: boolean;
+  pad_type: PadType | null;
+  mapping: string | null;
+  buttons_count: number | null;
+  axes_count: number | null;
+  buttons_tested: number[];
+  left_stick: boolean;
+  right_stick: boolean;
+  triggers_tested: number[];
+  focus_regained: boolean;
+  input_after_refocus: boolean | null;
+  triggers_verifiable: boolean | null;
+}
+
+export interface TouchResult extends Basic {
+  touch_capable: boolean;
+  max_touch_points: number | null;
+  max_simultaneous: number;
+  drag_ok: boolean;
+  cancels: number;
+}
+
+export interface FsResult extends Basic {
+  fullscreen_enabled: boolean | null;
+  entered: boolean;
+  exited: boolean;
+  error: string | null;
+  size: Size | null;
+}
+
+export interface AudioResult extends Basic {
+  state_before_gesture: string | null;
+  state_after_gesture: string | null;
+  sample_rate: number | null;
+  base_latency_ms: number | null;
+  output_latency_ms: number | null;
+  heard: boolean | null;
+  during_call: { heard: boolean | null; call_voice_ok: boolean | null } | null;
+}
+
+export type TypeCategory = 'imagem' | 'video' | 'audio' | 'outro';
+export interface FileRead { where: 'inicio' | 'meio' | 'fim'; bytes: number; ms: number; ok: boolean }
+export interface FileBasicResult extends Basic {
+  picker_opened: boolean;
+  cancelled: boolean;
+  size: number | null;
+  type_category: TypeCategory | null;
+  reads: FileRead[];
+}
+export interface MarkerRead { where: 'inicio' | 'apos_2gib' | 'fim'; ok: boolean; ms: number | null }
+export interface FileLargeResult extends Basic {
+  picker_opened: boolean;
+  cancelled: boolean;
+  size: number | null;
+  over_2gib: boolean | null;
+  markers: MarkerRead[];
+}
+
 export interface Tests {
   'A-ENV': Basic;
   'A-GL2': Gl2Result;
@@ -143,10 +216,17 @@ export interface Tests {
   'A-LAYOUT': LayoutResult;
   'A-VIS': VisResult;
   'I-BENCH': BenchResult;
+  'A-KEY': KeyResult;
+  'A-PAD': PadResult;
+  'A-TOUCH': TouchResult;
+  'A-FS': FsResult;
+  'A-AUDIO': AudioResult;
+  'A-FILE-BASIC': FileBasicResult;
+  'A-FILE-LARGE': FileLargeResult;
 }
 
 export interface Report {
-  schema: 'bt3probe.report/3';
+  schema: 'bt3probe.report/4';
   probe: { version: string; git_sha: string; built_at: string; sdk_version: string | null };
   run: { id: string; started_at: string; duration_ms: number; tz_offset_min: number };
   context: ContextInfo;

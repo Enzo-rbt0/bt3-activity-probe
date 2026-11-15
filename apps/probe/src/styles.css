@@ -84,3 +84,21 @@ tr.group td { font-weight: 700; color: var(--muted); font-size: 0.8rem; text-tra
   #results td:nth-child(3) { grid-column: 1 / -1; color: var(--muted); font-size: 0.88rem; }
   #results tr.group { display: block; border: none; padding: 12px 0 0; }
 }
+
+/* Testes interativos (F2b) */
+.icard { border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+.icard-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.icard h3 { font-size: 1rem; margin: 0; }
+.chip { font-weight: 700; font-size: 0.8rem; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); }
+.chip.st-AP { color: var(--ok); border-color: var(--ok); }
+.chip.st-RP, .chip.st-ERRO { color: var(--bad); border-color: var(--bad); }
+.chip.st-INV, .chip.st-SKIP { color: var(--warn); border-color: var(--warn); }
+.live { font-size: 0.88rem; margin: 6px 0; min-height: 1.2em; overflow-wrap: anywhere; }
+.touch-area { touch-action: none; user-select: none; height: 180px; border-radius: 10px; background: var(--bg); border: 2px dashed var(--line); display: flex; align-items: center; justify-content: center; color: var(--muted); margin: 6px 0; }
+.icard input[type=file] { display: block; margin: 6px 0; max-width: 100%; }
+.icard a { display: inline-block; margin: 2px 0 6px; color: var(--accent); }
+.buttons.call { margin-top: 8px; align-items: center; }
+.q { display: inline-flex; gap: 6px; align-items: center; font-size: 0.88rem; color: var(--muted); }
+button.small { padding: 6px 10px; }
+.icard:focus { outline: 2px solid var(--accent); }
+@media (max-width: 520px) { .q { flex-basis: 100%; flex-wrap: wrap; } .q button { flex: 1 1 40%; } }
