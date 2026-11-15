@@ -7,7 +7,7 @@
 //   - o marcador só é apagado depois de encontrado (persistência confirmada) ou se o usuário pedir.
 // Tamanhos: 1 KB no teste imediato, ~100 bytes no marcador. Nada pesado.
 import { clip } from '../hash';
-import type { IdbResult, PersistResult, StorageContext } from '../report/types';
+import type { IdbResult, PersistResult, PersistState, StorageContext } from '../report/types';
 
 const DB = 'bt3probe';
 const STORE = 'kv';
@@ -83,21 +83,48 @@ export async function runIdbReadWrite(idb: IDBFactory | undefined, nav?: Navigat
   }
 }
 
-// ---------- Persistência entre sessões ----------
-export interface Marker { id: string; created_at: number; ctx: StorageContext }
-const key = (ctx: StorageContext) => `persist-marker:${ctx}`;
+// ---------- Persistência entre sessões: máquina de estados (F2b-0) ----------
+// Um único registro por contexto guarda o estado do teste:
+//   none       nenhum registro (nunca testou, ou o armazenamento foi apagado)
+//   pending    marcador gravado, esperando a próxima abertura
+//   confirmed  marcador encontrado numa abertura seguinte (recibo: só datas)
+//   cancelled  o usuário apagou o marcador antes de verificar
+// Transições: none|confirmed|cancelled --gravar--> pending
+//             pending --abrir de novo--> confirmed (AP)
+//             pending --apagar--> cancelled
+// Uma confirmação antiga nunca aprova uma tentativa nova (gravar de novo volta para pending) e
+// nunca vira RP: "sumiu" só é aceito quando NÃO há registro nenhum (state_at_open = none).
+
+export interface PersistRecord {
+  state: Exclude<PersistState, 'none'>;
+  ctx: StorageContext;
+  created_at: number; // quando o marcador foi gravado
+  confirmed_at?: number; // quando foi encontrado numa abertura seguinte
+  cancelled_at?: number;
+}
+const key = (ctx: StorageContext) => `persist:${ctx}`;
+// Chave usada pela versão 0.2.0 (F2a). Nela, um registro presente significava "marcador pendente"
+// (a 0.2.0 apagava o marcador ao confirmar). Lido uma vez e migrado para o formato novo.
+const legacyKey = (ctx: StorageContext) => `persist-marker:${ctx}`;
+interface LegacyMarker { id?: string; created_at: number; ctx: StorageContext }
 
 export class PersistTest {
   private state: PersistResult;
   constructor(private idb: IDBFactory | undefined, private ctx: StorageContext, private now: () => number = Date.now) {
     this.state = {
-      status: 'SKIP', detail: '', storage_context: ctx, marker_found: false, marker_age_s: null,
-      marker_written_this_session: false, marker_pending: false, marker_deleted: false, user_reported_missing: false,
+      status: 'SKIP', detail: '', storage_context: ctx, state_at_open: 'none', state_now: 'none',
+      marker_age_s: null, last_confirmed_age_s: null, marker_written_this_session: false, user_reported_missing: false,
+      receipt_saved: null, legacy_migrated: false,
     };
   }
 
   result(): PersistResult {
     return { ...this.state };
+  }
+
+  // O botão "Gravei antes e ele sumiu" só faz sentido sem nenhum registro na abertura.
+  canReportMissing(): boolean {
+    return this.state.state_at_open === 'none' && !this.state.marker_written_this_session && !this.state.user_reported_missing;
   }
 
   private async withDb<T>(f: (db: IDBDatabase) => Promise<T>): Promise<T> {
@@ -110,36 +137,81 @@ export class PersistTest {
     }
   }
 
-  // Na abertura: há um marcador DESTE contexto gravado numa sessão anterior?
+  private read(): Promise<PersistRecord | undefined> {
+    return this.withDb((db) => op(db, 'readonly', (s) => s.get(key(this.ctx)) as IDBRequest<PersistRecord | undefined>));
+  }
+
+  // Migração da 0.2.0: um marcador pendente na chave antiga vira "pending" na chave nova e a chave
+  // antiga é apagada. Sem isso, um teste iniciado na 0.2.0 sumiria ao publicar a 0.2.1.
+  private async migrateLegacy(): Promise<PersistRecord | undefined> {
+    const old = await this.withDb((db) => op(db, 'readonly', (s) => s.get(legacyKey(this.ctx)) as IDBRequest<LegacyMarker | undefined>));
+    if (!old || old.ctx !== this.ctx || typeof old.created_at !== 'number') return undefined;
+    const rec: PersistRecord = { state: 'pending', ctx: this.ctx, created_at: old.created_at };
+    await this.save(rec);
+    await this.withDb((db) => op(db, 'readwrite', (s) => s.delete(legacyKey(this.ctx))));
+    this.state = { ...this.state, legacy_migrated: true };
+    return rec;
+  }
+
+  private save(r: PersistRecord): Promise<IDBValidKey> {
+    return this.withDb((db) => op(db, 'readwrite', (s) => s.put(r, key(this.ctx))));
+  }
+
+  private age(t: number | undefined): number | null {
+    return t === undefined ? null : Math.max(0, Math.round((this.now() - t) / 1000));
+  }
+
   async check(): Promise<PersistResult> {
+    let rec: PersistRecord | undefined;
     try {
-      const m = await this.withDb((db) => op(db, 'readonly', (s) => s.get(key(this.ctx)) as IDBRequest<Marker | undefined>));
-      if (m && m.ctx === this.ctx) {
-        const age = Math.max(0, Math.round((this.now() - m.created_at) / 1000));
-        // Persistência confirmada: agora sim o marcador pode ser apagado.
-        await this.withDb((db) => op(db, 'readwrite', (s) => s.delete(key(this.ctx))));
-        this.state = {
-          ...this.state, status: 'AP', marker_found: true, marker_age_s: age, marker_deleted: true, marker_pending: false,
-          detail: `PERSISTENCE_OK: o marcador gravado há ${age} s numa sessão anterior (${this.ctx}) foi encontrado e apagado.`,
-        };
-      } else {
-        this.state = {
-          ...this.state, status: 'SKIP',
-          detail: 'Nenhum marcador pendente neste ambiente. Para testar: "Gravar marcador", feche e reabra a Activity aqui mesmo.',
-        };
-      }
+      rec = await this.read();
+      if (!rec) rec = await this.migrateLegacy();
     } catch (e) {
       this.state = { ...this.state, status: 'RP', detail: `IndexedDB indisponível: ${errText(e)}` };
+      return this.result();
+    }
+    const valid = rec && rec.ctx === this.ctx ? rec : undefined;
+    const at: PersistState = valid?.state ?? 'none';
+    this.state = { ...this.state, state_at_open: at, state_now: at, last_confirmed_age_s: this.age(valid?.confirmed_at) };
+    if (valid?.state === 'pending') {
+      const age = this.age(valid.created_at);
+      const confirmed: PersistRecord = { state: 'confirmed', ctx: this.ctx, created_at: valid.created_at, confirmed_at: this.now() };
+      const legacy = this.state.legacy_migrated ? ' (marcador da versão 0.2.0, migrado)' : '';
+      try {
+        await this.save(confirmed);
+        this.state = {
+          ...this.state, status: 'AP', state_now: 'confirmed', marker_age_s: age, last_confirmed_age_s: 0, receipt_saved: true,
+          detail: `PERSISTENCE_OK: o marcador gravado há ${age} s numa sessão anterior (${this.ctx}) foi encontrado${legacy}. Recibo guardado.`,
+        };
+      } catch (e) {
+        // A persistência foi comprovada (o marcador foi lido), mas o recibo não: o registro continua
+        // "pending" no armazenamento e isso é dito com todas as letras.
+        this.state = {
+          ...this.state, status: 'AP', state_now: 'pending', marker_age_s: age, receipt_saved: false,
+          detail: `PERSISTENCE_OK: o marcador gravado há ${age} s foi encontrado${legacy}, mas o recibo NÃO foi gravado (${errText(e)}). O registro continua pendente.`,
+        };
+      }
+    } else if (valid?.state === 'confirmed') {
+      this.state = {
+        ...this.state, status: 'SKIP',
+        detail: `Nenhum teste pendente. O último marcador já foi confirmado há ${this.state.last_confirmed_age_s} s; para testar de novo, grave um novo.`,
+      };
+    } else if (valid?.state === 'cancelled') {
+      this.state = { ...this.state, status: 'SKIP', detail: 'Nenhum teste pendente: o último marcador foi apagado antes de ser verificado.' };
+    } else {
+      this.state = {
+        ...this.state, status: 'SKIP',
+        detail: 'Nenhum marcador pendente neste ambiente. Para testar: "Gravar marcador", feche e reabra a Activity aqui mesmo.',
+      };
     }
     return this.result();
   }
 
   async write(): Promise<PersistResult> {
     try {
-      const m: Marker = { id: crypto.randomUUID?.() ?? String(Math.random()), created_at: this.now(), ctx: this.ctx };
-      await this.withDb((db) => op(db, 'readwrite', (s) => s.put(m, key(this.ctx))));
+      await this.save({ state: 'pending', ctx: this.ctx, created_at: this.now() });
       this.state = {
-        ...this.state, status: 'SKIP', marker_written_this_session: true, marker_pending: true, marker_deleted: false,
+        ...this.state, status: 'SKIP', state_now: 'pending', marker_written_this_session: true,
         detail: 'Marcador gravado. Feche a Activity e abra de novo neste mesmo ambiente; o resultado sai no relatório da próxima abertura.',
       };
     } catch (e) {
@@ -149,24 +221,23 @@ export class PersistTest {
   }
 
   async remove(): Promise<PersistResult> {
+    if (this.state.state_now !== 'pending') return this.result();
     try {
-      await this.withDb((db) => op(db, 'readwrite', (s) => s.delete(key(this.ctx))));
-      this.state = {
-        ...this.state, status: 'SKIP', marker_pending: false, marker_deleted: true,
-        detail: 'Marcador apagado a pedido; persistência não verificada.',
-      };
+      const rec = await this.read();
+      await this.save({ state: 'cancelled', ctx: this.ctx, created_at: rec?.created_at ?? this.now(), cancelled_at: this.now() });
+      this.state = { ...this.state, status: 'SKIP', state_now: 'cancelled', detail: 'Marcador apagado a pedido; persistência não verificada.' };
     } catch (e) {
       this.state = { ...this.state, detail: `Não consegui apagar o marcador: ${errText(e)}` };
     }
     return this.result();
   }
 
-  // O usuário gravou numa sessão anterior, reabriu no mesmo ambiente e o marcador não apareceu.
+  // O usuário gravou numa sessão anterior, reabriu no mesmo ambiente e não há registro nenhum.
   reportMissing(): PersistResult {
-    if (this.state.marker_found) return this.result();
+    if (!this.canReportMissing()) return this.result();
     this.state = {
       ...this.state, status: 'RP', user_reported_missing: true,
-      detail: 'O usuário gravou um marcador numa sessão anterior deste ambiente e ele não estava mais lá: o dado não persistiu.',
+      detail: 'O usuário gravou um marcador numa sessão anterior deste ambiente e não há mais nenhum registro: o dado não persistiu.',
     };
     return this.result();
   }

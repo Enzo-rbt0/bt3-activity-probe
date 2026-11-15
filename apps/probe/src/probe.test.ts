@@ -4,7 +4,7 @@ import { clip, shortHash } from './hash';
 import { buildReport, reportFileName, type BuildInput } from './report/build';
 import { validateReport } from './report/validate';
 import { classifyEnv, type SdkOutcome } from './tests/a-env';
-import { classifyGl2, isSoftwareRenderer } from './tests/a-gl2';
+import { classifyGl2, gpuAcceleration, isSoftwareRenderer } from './tests/a-gl2';
 import type { Gl2Result, Tests } from './report/types';
 import { FEATURE_KEYS } from './report/types';
 
@@ -45,23 +45,39 @@ describe('hash e corte', () => {
 
 describe('classificação A-GL2', () => {
   it.each([
-    ['Google SwiftShader', true],
-    ['llvmpipe (LLVM 15.0.7, 256 bits)', true],
-    ['Microsoft Basic Render Driver', true],
-    ['ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)', false],
-    ['Adreno (TM) 642L', false],
-    ['Apple GPU', false],
-  ])('%s → software=%s', (r, sw) => expect(isSoftwareRenderer(r)).toBe(sw));
-  it('renderizador vazio ou ausente é desconhecido', () => {
-    expect(isSoftwareRenderer(null)).toBeNull();
-    expect(isSoftwareRenderer('  ')).toBeNull();
+    ['Google SwiftShader', 'software'],
+    ['llvmpipe (LLVM 15.0.7, 256 bits)', 'software'],
+    ['ANGLE (Microsoft, Microsoft Basic Render Driver (0x0000008C) Direct3D11 vs_5_0 ps_5_0, D3D11)', 'software'],
+    ['ANGLE (NVIDIA, NVIDIA GeForce RTX 5070 (0x00002F04) Direct3D11 vs_5_0 ps_5_0, D3D11)', 'confirmed'],
+    ['Adreno (TM) 840', 'confirmed'],
+    ['Apple GPU', 'confirmed'],
+    // Regressão da F2a: o Brave devolve só "Brave" — nome escondido, aceleração desconhecida.
+    ['Brave', 'unknown'],
+    ['WebKit WebGL', 'unknown'],
+    ['Mozilla', 'unknown'],
+    ['  ', 'unknown'],
+    // Revisão do PR #3: nome não reconhecido não confirma aceleração.
+    ['Generic Custom Renderer', 'unknown'],
+    ['ANGLE (Unknown, Some Future GPU Direct3D11)', 'unknown'],
+    ['Mali-G720', 'confirmed'],
+    ['ANGLE (Intel, Intel(R) UHD Graphics (0x0000A7A8) Direct3D11 vs_5_0 ps_5_0, D3D11)', 'confirmed'],
+    ['AMD Radeon RX 7800 XT', 'confirmed'],
+  ])('%s → %s', (r, g) => expect(gpuAcceleration(r)).toBe(g));
+  it('renderizador ausente é desconhecido; software_renderer só é true/false quando se sabe', () => {
+    expect(gpuAcceleration(null)).toBe('unknown');
+    expect(isSoftwareRenderer('Brave')).toBeNull();
+    expect(isSoftwareRenderer('Google SwiftShader')).toBe(true);
+    expect(isSoftwareRenderer('Adreno (TM) 840')).toBe(false);
   });
-  it('status segue contexto → desenho → software', () => {
-    expect(classifyGl2(false, false, null).status).toBe('RP');
-    expect(classifyGl2(true, false, false).status).toBe('RP');
-    expect(classifyGl2(true, true, true).status).toBe('INV');
-    expect(classifyGl2(true, true, null).status).toBe('INV');
-    expect(classifyGl2(true, true, false).status).toBe('AP');
+  it('WebGL 2 funcionando é AP mesmo com a placa escondida; aceleração fica em campo separado', () => {
+    expect(classifyGl2(false, false, 'none').status).toBe('RP');
+    expect(classifyGl2(true, false, 'confirmed').status).toBe('RP');
+    expect(classifyGl2(true, true, 'software').status).toBe('INV');
+    const hidden = classifyGl2(true, true, 'unknown');
+    expect(hidden.status).toBe('AP');
+    expect(hidden.detail).toContain('NÃO confirmada');
+    expect(classifyGl2(true, true, 'confirmed')).toMatchObject({ status: 'AP' });
+    expect(classifyGl2(true, true, 'confirmed').detail).toContain('indicativo');
   });
 });
 
@@ -81,9 +97,10 @@ describe('classificação A-ENV', () => {
 
 const gl2: Gl2Result = {
   status: 'AP', detail: 'ok', context_ok: true, draw_ok: true, renderer: 'ANGLE (NVIDIA)', vendor: 'Google Inc. (NVIDIA)',
-  software_renderer: false, max_texture_size: 16384, max_renderbuffer_size: 16384, max_samples: 8,
+  software_renderer: false, gpu_acceleration_status: 'confirmed', max_texture_size: 16384, max_renderbuffer_size: 16384, max_samples: 8,
   max_viewport_dims: [32767, 32767], extensions: ['EXT_color_buffer_float'],
 };
+const { gpu_acceleration_status: _semCampoNovo, ...gl2v1 } = gl2;
 
 function fullTests(): Tests {
   const async = { status: 'AP' as const, detail: 'ok', result: 42, ms: 12, error: null };
@@ -106,8 +123,9 @@ function fullTests(): Tests {
     'A-ASYNCIFY-EMCC': { ...async, emcc_version: null },
     'A-IDB': { status: 'AP', detail: 'ok', read_write_ok: true, quota_mb: 1024, usage_mb: 0.01, persisted: false, error: null },
     'A-IDB-PERSIST': {
-      status: 'SKIP', detail: 'ok', storage_context: 'discord-desktop-app', marker_found: false, marker_age_s: null,
-      marker_written_this_session: true, marker_pending: true, marker_deleted: false, user_reported_missing: false,
+      status: 'SKIP', detail: 'ok', storage_context: 'discord-desktop-app', state_at_open: 'confirmed', state_now: 'pending',
+      marker_age_s: null, last_confirmed_age_s: 600, marker_written_this_session: true, user_reported_missing: false,
+      receipt_saved: null, legacy_migrated: false,
     },
     'A-LAYOUT': {
       status: 'AP', detail: 'ok', orientation_type: 'portrait-primary', orientation_angle: 0,
@@ -161,7 +179,7 @@ describe('relatório e schema', () => {
     const v = validateReport(r);
     expect(v.errors).toEqual([]);
     expect(v.ok).toBe(true);
-    expect(r.schema).toBe('bt3probe.report/2');
+    expect(r.schema).toBe('bt3probe.report/3');
     expect(r.run.duration_ms).toBe(813);
     expect(reportFileName(r)).toBe('bt3probe-discord-desktop-app-2026-11-15T12-05-00-000Z.json');
   });
@@ -188,13 +206,31 @@ describe('relatório e schema', () => {
         viewport: { width: 1528, height: 720 }, screen: { width: 1920, height: 1080 }, dpr: 1, hardware_concurrency: 16,
         device_memory_gb: 32, device_label: 'PC', os_label: 'Windows 11', network: 'cabo', voice_call_active: null,
       },
-      tests: { 'A-ENV': { status: 'AP', detail: 'ok' }, 'A-GL2': gl2 },
+      tests: { 'A-ENV': { status: 'AP', detail: 'ok' }, 'A-GL2': gl2v1 },
       consents: [], cleanup: { needed: false, performed: false }, notes: '',
     };
     expect(validateReport(f1).errors).toEqual([]);
     // O mesmo conteúdo rotulado como formato 2 não passa: faltam os testes novos.
     expect(validateReport({ ...f1, schema: 'bt3probe.report/2' }).ok).toBe(false);
     expect(validateReport({ ...f1, schema: 'bt3probe.report/9' }).ok).toBe(false);
+  });
+  it('relatório da F2a (formato 2) continua válido no schema 2', () => {
+    const r = buildReport(input()) as unknown as Record<string, unknown> & { tests: Record<string, unknown> };
+    const v2 = {
+      ...r,
+      schema: 'bt3probe.report/2',
+      tests: {
+        ...r.tests,
+        'A-GL2': gl2v1,
+        'A-IDB-PERSIST': {
+          status: 'AP', detail: 'ok', storage_context: 'discord-mobile', marker_found: true, marker_age_s: 31,
+          marker_written_this_session: false, marker_pending: false, marker_deleted: true, user_reported_missing: false,
+        },
+      },
+    };
+    expect(validateReport(v2).errors).toEqual([]);
+    // O formato 3 exige os campos novos.
+    expect(validateReport({ ...v2, schema: 'bt3probe.report/3' }).ok).toBe(false);
   });
   it('rejeita campo extra em qualquer nível (ex.: alguém tentar incluir user_id ou URL)', () => {
     const r = buildReport(input()) as unknown as Record<string, Record<string, unknown>>;

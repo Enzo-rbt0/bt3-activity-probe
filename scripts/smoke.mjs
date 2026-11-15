@@ -1,5 +1,5 @@
 // Teste de fumaça: abre a build pronta (apps/probe/dist) num Chromium sem tela e confere que a sonda
-// termina e produz um relatório válido (formato 2). Cenários:
+// termina e produz um relatório válido (formato 3). Cenários:
 //   1. standalone: WebAssembly, JSPI/Asyncify, IndexedDB e o save entre sessões (grava, recarrega,
 //      encontra) funcionando fora do Discord;
 //   2. URL com parâmetros do Discord falsos e sem Discord por trás: A-ENV = RP depois de 10 s;
@@ -14,7 +14,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import validate from '../packages/report-schema/generated/validate-report-v2.mjs';
+import validate from '../packages/report-schema/generated/validate-report-v3.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const dist = join(root, 'apps/probe/dist');
@@ -115,12 +115,16 @@ try {
     if (r.tests['A-WASM-URL'].content_type !== 'application/wasm') fail(`standalone: .wasm servido como ${r.tests['A-WASM-URL'].content_type}`);
     if (!r.cleanup.performed) fail('standalone: limpeza do A-IDB não foi feita');
     await page.click('#persist-write');
-    await page.waitForFunction(() => JSON.parse(document.querySelector('#json').value).tests['A-IDB-PERSIST'].marker_pending === true);
+    await page.waitForFunction(() => JSON.parse(document.querySelector('#json').value).tests['A-IDB-PERSIST'].state_now === 'pending');
     r = await openProbe(page, '', 20_000); // "fecha e reabre" no mesmo contexto
     check('standalone-reaberto', r, { 'A-IDB-PERSIST': ['AP'] });
-    if (!r.tests['A-IDB-PERSIST'].marker_deleted) fail('standalone-reaberto: marcador não foi apagado depois de confirmado');
+    if (r.tests['A-IDB-PERSIST'].state_now !== 'confirmed') fail('standalone-reaberto: estado não virou confirmed');
     r = await openProbe(page, '', 20_000);
     check('standalone-terceira', r, { 'A-IDB-PERSIST': ['SKIP'] });
+    // Regressão da F2a: com recibo de confirmação, "Gravei antes e ele sumiu" fica desabilitado.
+    if (r.tests['A-IDB-PERSIST'].state_at_open !== 'confirmed') fail('standalone-terceira: recibo de confirmação não encontrado');
+    if (!(await page.isDisabled('#persist-missing'))) fail('standalone-terceira: botão "sumiu" deveria estar desabilitado');
+    if (!['confirmed', 'software', 'unknown'].includes(r.tests['A-GL2'].gpu_acceleration_status)) fail('A-GL2 sem gpu_acceleration_status');
     if (errors.length) fail(`standalone: erros na página: ${errors.join(' | ')}`);
     await ctx.close();
   }

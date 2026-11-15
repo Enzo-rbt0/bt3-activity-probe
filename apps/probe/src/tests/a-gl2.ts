@@ -4,16 +4,35 @@ import { clip } from '../hash';
 import type { Gl2Result, Status } from '../report/types';
 
 const SOFTWARE_RE = /swiftshader|llvmpipe|softpipe|software|basic render|microsoft basic/i;
+// Nomes genéricos que alguns navegadores devolvem para esconder a placa de vídeo (achado da F2a:
+// o Brave devolve só "Brave"). Com eles não dá para saber se há aceleração.
+const MASKED_RE = /^\s*(brave|webkit webgl|webkit|mozilla|google inc\.?|generic renderer|disabled|unknown)\s*$/i;
 
-export function isSoftwareRenderer(renderer: string | null): boolean | null {
-  if (renderer === null || renderer.trim() === '') return null;
-  return SOFTWARE_RE.test(renderer);
+// Só nomes de fabricantes/linhas de placa de vídeo conhecidos contam como "confirmed" (revisão do
+// PR #3). Nome não reconhecido = "unknown". Mesmo um nome reconhecido é evidência indicativa, não
+// medição: o desempenho real é medido na F3.
+const HARDWARE_RE =
+  /nvidia|geforce|quadro|\brtx\b|\bgtx\b|\bamd\b|radeon|\bati\b|intel\(r\)|intel.*(uhd|iris|hd graphics|arc)|\badreno\b|\bmali\b|powervr|apple (gpu|m\d)|xclipse|immortalis|tegra|vivante/i;
+
+export type GpuAcceleration = 'confirmed' | 'software' | 'unknown' | 'none';
+
+// Duas perguntas separadas (revisão da F2b): o WebGL 2 funciona? A aceleração por placa de vídeo
+// está confirmada? Esconder o nome da placa não quer dizer que o WebGL 2 falhou.
+export function gpuAcceleration(renderer: string | null): Exclude<GpuAcceleration, 'none'> {
+  if (renderer === null || renderer.trim() === '' || MASKED_RE.test(renderer)) return 'unknown';
+  if (SOFTWARE_RE.test(renderer)) return 'software';
+  return HARDWARE_RE.test(renderer) ? 'confirmed' : 'unknown';
 }
 
-export function classifyGl2(contextOk: boolean, drawOk: boolean, software: boolean | null): { status: Status; detail: string } {
+export function isSoftwareRenderer(renderer: string | null): boolean | null {
+  const g = gpuAcceleration(renderer);
+  return g === 'unknown' ? null : g === 'software';
+}
+
+export function classifyGl2(contextOk: boolean, drawOk: boolean, accel: GpuAcceleration): { status: Status; detail: string } {
   if (!contextOk) return { status: 'RP', detail: 'Não foi possível criar um contexto WebGL 2.' };
   if (!drawOk) return { status: 'RP', detail: 'Contexto WebGL 2 criado, mas o teste de desenho falhou.' };
-  if (software === true) {
+  if (accel === 'software') {
     return {
       status: 'INV',
       detail:
@@ -21,10 +40,13 @@ export function classifyGl2(contextOk: boolean, drawOk: boolean, software: boole
         'No Discord: Configurações → Avançado → Aceleração de hardware.',
     };
   }
-  if (software === null) {
-    return { status: 'INV', detail: 'WebGL 2 funciona, mas o navegador escondeu o nome da placa de vídeo.' };
+  if (accel === 'unknown') {
+    return {
+      status: 'AP',
+      detail: 'WebGL 2 funciona. Aceleração por placa de vídeo NÃO confirmada: o nome da placa está escondido ou não é reconhecido.',
+    };
   }
-  return { status: 'AP', detail: 'WebGL 2 funciona com aceleração por placa de vídeo.' };
+  return { status: 'AP', detail: 'WebGL 2 funciona; o nome da placa indica aceleração por hardware (indicativo, não medido).' };
 }
 
 function num(v: unknown): number | null {
@@ -34,7 +56,7 @@ function num(v: unknown): number | null {
 export function runGl2(doc: Document = document): Gl2Result {
   const empty: Gl2Result = {
     status: 'RP', detail: '', context_ok: false, draw_ok: false, renderer: null, vendor: null,
-    software_renderer: null, max_texture_size: null, max_renderbuffer_size: null, max_samples: null,
+    software_renderer: null, gpu_acceleration_status: 'none', max_texture_size: null, max_renderbuffer_size: null, max_samples: null,
     max_viewport_dims: null, extensions: [],
   };
   let gl: WebGL2RenderingContext | null = null;
@@ -44,10 +66,10 @@ export function runGl2(doc: Document = document): Gl2Result {
     canvas.height = 4;
     gl = canvas.getContext('webgl2', { preserveDrawingBuffer: true });
   } catch (e) {
-    const c = classifyGl2(false, false, null);
+    const c = classifyGl2(false, false, 'none');
     return { ...empty, ...c, detail: `${c.detail} (${String(e).slice(0, 200)})` };
   }
-  if (!gl) return { ...empty, ...classifyGl2(false, false, null) };
+  if (!gl) return { ...empty, ...classifyGl2(false, false, 'none') };
 
   try {
     const dbg = gl.getExtension('WEBGL_debug_renderer_info');
@@ -62,14 +84,15 @@ export function runGl2(doc: Document = document): Gl2Result {
     gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
     const drawOk = gl.getError() === gl.NO_ERROR && px[0] === 0 && px[1] === 255 && px[2] === 0 && px[3] === 255;
 
-    const software = isSoftwareRenderer(renderer);
+    const accel = gpuAcceleration(renderer);
     return {
-      ...classifyGl2(true, drawOk, software),
+      ...classifyGl2(true, drawOk, accel),
       context_ok: true,
       draw_ok: drawOk,
       renderer,
       vendor,
-      software_renderer: software,
+      software_renderer: isSoftwareRenderer(renderer),
+      gpu_acceleration_status: accel,
       max_texture_size: num(gl.getParameter(gl.MAX_TEXTURE_SIZE)),
       max_renderbuffer_size: num(gl.getParameter(gl.MAX_RENDERBUFFER_SIZE)),
       max_samples: num(gl.getParameter(gl.MAX_SAMPLES)),
