@@ -1,0 +1,62 @@
+# Unidade systemd da sonda. Escuta só em 127.0.0.1:8787; o Caddy faz TLS e repassa /net/*.
+# Sem CPUQuota (decisão da revisão da F3: não limitar CPU artificialmente durante as medições).
+# O serviço sempre começa FECHADO: um reinício nunca reabre a rede (ver ops/README.md).
+[Unit]
+Description=BT3 Activity Probe (servidor de diagnóstico, F3)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bt3probe
+Group=bt3probe
+WorkingDirectory=/opt/bt3probe
+ExecStart=/usr/bin/node --disable-warning=ExperimentalWarning /opt/bt3probe/dist/main.js
+Environment=NODE_ENV=production
+Environment=BT3PROBE_HOST=127.0.0.1
+Environment=BT3PROBE_PORT=8787
+Environment=BT3PROBE_DB=/var/lib/bt3probe/probe.db
+Environment=BT3PROBE_WINDOW_FILE=/etc/bt3probe/janela
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+# Memória e processos
+MemoryMax=256M
+TasksMax=64
+LimitNOFILE=1024
+
+# Sandbox
+StateDirectory=bt3probe
+StateDirectoryMode=0700
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+# Sem MemoryDenyWriteExecute: o JIT do V8 precisa de memória executável.
+RemoveIPC=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+IPAddressDeny=any
+IPAddressAllow=localhost
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged
+UMask=0077
+ReadOnlyPaths=/etc/bt3probe
+
+[Install]
+WantedBy=multi-user.target
