@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { ManualClock } from '../src/clock.js';
-import { MAX_WINDOW_MS, parseWindow, WindowWatcher } from '../src/config.js';
+import { FUTURE_SKEW_MS, MAX_WINDOW_MS, parseWindow, WindowWatcher } from '../src/config.js';
 import { START, windowJson } from './helpers.js';
 
 const H = 60 * 60 * 1000;
@@ -66,24 +66,93 @@ describe('T2 — janela (fail-closed)', () => {
   });
 });
 
-describe('T2 — script ops/bt3probe-janela', () => {
-  it('"abrir" grava JSON que o servidor aceita; "fechar" remove; minutos fora de 1..720 recusados', () => {
+describe('T2 — limites da janela (PR #6, determinísticos: relógio passado como parâmetro)', () => {
+  // processo iniciou em P; "agora" = N. Nada aqui lê o relógio real.
+  const P = START;
+  const N = START + 10_000;
+  const at = (openedOffset: number, lengthMs: number, now = N, proc0 = P) =>
+    parseWindow(windowJson(N + openedOffset, N + openedOffset + lengthMs), proc0, now);
+
+  it('1. janela de exatamente 12 h → aceita', () => {
+    expect(at(0, MAX_WINDOW_MS)).toEqual({ open: true, until: N + MAX_WINDOW_MS, reason: 'aberta' });
+  });
+
+  it('2. abertura 30 s no futuro (dentro da tolerância), com 12 h exatas → aceita', () => {
+    expect(at(30_000, MAX_WINDOW_MS)).toEqual({ open: true, until: N + 30_000 + MAX_WINDOW_MS, reason: 'aberta' });
+    // limite da tolerância: exatamente 60 s no futuro ainda é aceito
+    expect(at(FUTURE_SKEW_MS, MAX_WINDOW_MS).open).toBe(true);
+  });
+
+  it('3. abertura 61 s no futuro → recusada', () => {
+    expect(at(61_000, 3600_000)).toMatchObject({ open: false, reason: 'abertura no futuro' });
+    expect(at(FUTURE_SKEW_MS + 1, 3600_000)).toMatchObject({ open: false, reason: 'abertura no futuro' });
+  });
+
+  it('4. janela de 12 h + 1 ms → recusada (no presente e com abertura no futuro tolerado)', () => {
+    expect(at(0, MAX_WINDOW_MS + 1)).toMatchObject({ open: false, reason: 'janela maior que 12 h' });
+    expect(at(30_000, MAX_WINDOW_MS + 1)).toMatchObject({ open: false, reason: 'janela maior que 12 h' });
+    // aberta há 1 h: faltam menos de 12 h, mas a janela inteira passa de 12 h
+    expect(at(-3600_000, MAX_WINDOW_MS + 1, N, N - 3600_000)).toMatchObject({ open: false, reason: 'janela maior que 12 h' });
+  });
+
+  it('5. vencimento anterior ou igual à abertura → recusado (inclusive com abertura no futuro tolerado)', () => {
+    expect(at(30_000, 0)).toMatchObject({ open: false, reason: 'vencimento anterior ou igual à abertura' });
+    expect(at(30_000, -20_000)).toMatchObject({ open: false, reason: 'vencimento anterior ou igual à abertura' });
+    expect(at(0, -1)).toMatchObject({ open: false, reason: 'vencimento anterior ou igual à abertura' });
+    expect(at(30_000, 1).open).toBe(true); // 1 ms depois da abertura: válido
+  });
+
+  it('6. reinício com janela ainda válida (12 h, 11 h restantes) → permanece fechada', () => {
+    const restart = N + 3600_000; // processo reiniciou 1 h depois da abertura
+    expect(at(0, MAX_WINDOW_MS, restart + 1000, restart)).toMatchObject({ open: false, reason: 'janela aberta antes do último reinício: abrir de novo' });
+    // nova abertura depois do reinício volta a valer
+    expect(parseWindow(windowJson(restart + 500, restart + 500 + MAX_WINDOW_MS), restart, restart + 1000).open).toBe(true);
+  });
+
+  it('a regra removida ("restante ≤ 12 h") não volta: relógio do servidor 1 ms atrás da abertura, 12 h exatas → aceita', () => {
+    expect(at(1, MAX_WINDOW_MS).open).toBe(true);
+  });
+});
+
+describe('T2 — script ops/bt3probe-janela (processo real, sem depender de diferenças entre leituras do relógio)', () => {
+  it('"abrir" grava JSON aceito pelo servidor; "fechar" remove; minutos fora de 1..720 recusados', () => {
     const dir = mkdtempSync(join(process.env.TMPDIR ?? tmpdir(), 'bt3probe-j-'));
     const arq = join(dir, 'janela');
     const run = (...args: string[]) => spawnSync('sh', [script, ...args], { env: { PATH: process.env.PATH, BT3PROBE_WINDOW_FILE: arq }, encoding: 'utf8' });
-    const inicio = Date.now(); // processo iniciou no mesmo instante: precisão de ms evita falso fechamento
+    const ler = () => {
+      const text = readFileSync(arq, 'utf8');
+      const j = JSON.parse(text) as { opened_at: string; open_until: string };
+      expect(j.opened_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(j.open_until).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      return { text, opened: Date.parse(j.opened_at), until: Date.parse(j.open_until) };
+    };
+    const milissegundos: number[] = [];
+
     expect(run('abrir', '120').status).toBe(0);
-    const s = parseWindow(readFileSync(arq, 'utf8'), inicio, Date.now());
-    expect(s.open).toBe(true);
-    expect(s.until! - Date.now()).toBeGreaterThan(119 * 60_000);
-    expect(s.until! - Date.now()).toBeLessThanOrEqual(120 * 60_000);
-    // Máximo permitido: exatamente 12 h, aceito pelo servidor (antes passava alguns ms e era recusado).
+    const a = ler();
+    expect(a.until - a.opened).toBe(120 * 60_000); // vem só do arquivo
+    // Avaliado no próprio instante de abertura: o resultado não depende do relógio da máquina de teste.
+    expect(parseWindow(a.text, a.opened, a.opened)).toEqual({ open: true, until: a.until, reason: 'aberta' });
+    // Sanidade folgada (1 min) de que o script usa o relógio atual; não compara milissegundos.
+    expect(Math.abs(a.opened - Date.now())).toBeLessThan(60_000);
+    milissegundos.push(a.opened % 1000);
+
+    // Máximo permitido: exatamente 12 h (antes, duas leituras de "date" passavam alguns ms).
     for (let i = 0; i < 5; i++) {
       expect(run('abrir', '720').status).toBe(0);
-      const j = JSON.parse(readFileSync(arq, 'utf8')) as { opened_at: string; open_until: string };
-      expect(Date.parse(j.open_until) - Date.parse(j.opened_at)).toBe(MAX_WINDOW_MS);
-      expect(parseWindow(JSON.stringify(j), inicio, Date.now())).toMatchObject({ open: true, until: Date.parse(j.open_until) });
+      const b = ler();
+      expect(b.until - b.opened).toBe(MAX_WINDOW_MS);
+      expect(parseWindow(b.text, b.opened, b.opened)).toEqual({ open: true, until: b.until, reason: 'aberta' });
+      // Mesmo arquivo com o relógio do servidor 30 s atrás da abertura (dentro da tolerância): aceito.
+      expect(parseWindow(b.text, b.opened - 30_000, b.opened - 30_000).open).toBe(true);
+      // E um processo iniciado 1 ms depois da abertura (reinício) o ignora.
+      expect(parseWindow(b.text, b.opened + 1, b.opened + 1).open).toBe(false);
+      milissegundos.push(b.opened % 1000);
     }
+    // opened_at tem milissegundos de verdade (não arredondado ao segundo): em 6 aberturas, ao menos uma
+    // tem parte de ms diferente de zero (a chance de todas serem .000 por acaso é ~10^-18).
+    expect(milissegundos.some((ms) => ms !== 0)).toBe(true);
+
     expect(run('abrir', '721').status).toBe(2);
     expect(run('abrir', '0').status).toBe(2);
     expect(run('abrir', '-5').status).toBe(2);

@@ -1,15 +1,19 @@
 // Janela de rede (interruptor). Só o servidor lê; nenhum botão, painel ou parâmetro de URL abre.
 // Arquivo JSON gravado pelo script ops/bt3probe-janela (via SSH, por quem opera a VM):
 //   {"opened_at":"2026-11-20T21:00:00Z","open_until":"2026-11-20T23:00:00Z"}
-// Fechado (fail-closed) se: arquivo ausente/ilegível/inválido; open_until no passado ou a mais de 12 h;
-// janela maior que 12 h; opened_at no futuro; ou **opened_at anterior ao início deste processo**.
+// Fechado (fail-closed) se: arquivo ausente/ilegível/inválido; open_until anterior ou igual a opened_at;
+// open_until no passado; janela (open_until − opened_at) maior que 12 h; opened_at mais de 60 s no futuro;
+// ou **opened_at anterior ao início deste processo**.
+// Não há regra separada para o tempo restante: com opened_at ≤ agora + 60 s e janela ≤ 12 h, o tempo
+// restante já fica limitado a 12 h + 60 s. A regra antiga ("restante ≤ 12 h") recusava janelas de 12 h
+// exatas quando a leitura do relógio do servidor ficava atrás de opened_at (dentro da tolerância de 60 s).
 // Esta última regra é a do reinício: um processo novo nunca reaproveita uma janela aberta antes dele,
 // mesmo que ainda tenha tempo restante. É preciso rodar "abrir" de novo (nova autorização).
 import { readFileSync } from 'node:fs';
 import type { Clock, TimerHandle } from './clock.js';
 
 export const MAX_WINDOW_MS = 12 * 60 * 60 * 1000;
-const FUTURE_SKEW_MS = 60 * 1000;
+export const FUTURE_SKEW_MS = 60 * 1000;
 export const RELOAD_MS = 5000;
 
 export interface WindowState {
@@ -36,10 +40,11 @@ export function parseWindow(text: string | null, processStartedAt: number, now: 
   const opened = Date.parse(opened_at);
   const until = Date.parse(open_until);
   if (!Number.isFinite(opened) || !Number.isFinite(until)) return CLOSED('datas inválidas');
+  if (until <= opened) return CLOSED('vencimento anterior ou igual à abertura');
   if (opened < processStartedAt) return CLOSED('janela aberta antes do último reinício: abrir de novo');
   if (opened > now + FUTURE_SKEW_MS) return CLOSED('abertura no futuro');
   if (until <= now) return CLOSED('janela vencida');
-  if (until - opened > MAX_WINDOW_MS || until - now > MAX_WINDOW_MS) return CLOSED('janela maior que 12 h');
+  if (until - opened > MAX_WINDOW_MS) return CLOSED('janela maior que 12 h');
   return { open: true, until, reason: 'aberta' };
 }
 

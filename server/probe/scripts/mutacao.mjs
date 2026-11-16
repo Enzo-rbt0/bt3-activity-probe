@@ -15,7 +15,14 @@ const M = [
   // Janela e reinício
   ['reinício: ignora opened_at < início', 'src/config.ts', 'if (opened < processStartedAt)', 'if (false)'],
   ['janela: current() sem prazo', 'src/config.ts', 'this.clock.now() >= s.until', 'false'],
-  ['janela: aceita mais de 12 h', 'src/config.ts', 'until - opened > MAX_WINDOW_MS ||', 'false ||'],
+  ['janela: aceita mais de 12 h', 'src/config.ts', 'if (until - opened > MAX_WINDOW_MS)', 'if (false)'],
+  ['janela: 12 h exatas recusadas (> vira >=)', 'src/config.ts', 'if (until - opened > MAX_WINDOW_MS)', 'if (until - opened >= MAX_WINDOW_MS)'],
+  ['janela: volta a regra "restante ≤ 12 h"', 'src/config.ts', 'if (until - opened > MAX_WINDOW_MS)', 'if (until - opened > MAX_WINDOW_MS || until - now > MAX_WINDOW_MS)'],
+  ['janela: aceita vencimento ≤ abertura', 'src/config.ts', 'if (until <= opened)', 'if (false)'],
+  ['janela: aceita vencimento = abertura (<= vira <)', 'src/config.ts', 'if (until <= opened)', 'if (until < opened)'],
+  ['janela: sem limite de abertura no futuro', 'src/config.ts', 'if (opened > now + FUTURE_SKEW_MS)', 'if (false)'],
+  ['janela: tolerância de 60 s vira < 60 s (> vira >=)', 'src/config.ts', 'if (opened > now + FUTURE_SKEW_MS)', 'if (opened >= now + FUTURE_SKEW_MS)'],
+  ['janela: tolerância de 60 s vira 61 s', 'src/config.ts', 'export const FUTURE_SKEW_MS = 60 * 1000;', 'export const FUTURE_SKEW_MS = 61 * 1000;'],
   // Orçamento e bilhetes
   ['tx: BEGIN deferred', 'src/db.ts', "raw.exec('BEGIN IMMEDIATE')", "raw.exec('BEGIN')"],
   ['simultâneas: >= vira >', 'src/budget.ts', 'this.activeCount(now) >= this.limits.maxConcurrent', 'this.activeCount(now) > this.limits.maxConcurrent'],
