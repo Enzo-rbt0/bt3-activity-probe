@@ -134,6 +134,42 @@ describe('T10 — falhas', () => {
     }
   });
 
+  it('processo real: JSON "null" e outros corpos fora do contrato → 400, processo segue vivo, nada reservado', async () => {
+    const dir = tmp();
+    const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', join(root, 'dist/main.js')], {
+      env: { PATH: process.env.PATH, BT3PROBE_PORT: '0', BT3PROBE_DB: join(dir, 'p.db'), BT3PROBE_WINDOW_FILE: join(dir, 'janela') },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const lines: string[] = [];
+    let stderr = '';
+    child.stdout.on('data', (d: Buffer) => lines.push(...d.toString().trim().split('\n')));
+    child.stderr.on('data', (d: Buffer) => (stderr += d.toString()));
+    try {
+      await waitFor(() => lines.some((l) => l.includes('"start"')), 10_000);
+      const port = JSON.parse(lines.find((l) => l.includes('"start"'))!).port as number;
+      const bodies = ['null', '[]', '"echo"', '1', 'true', '{"kind":null}', '{"kind":"echo","duration_s":"60"}', '{"__proto__":{"kind":"echo"}}'];
+      for (let round = 0; round < 2; round++) {
+        // 1ª rodada com a janela fechada (o corpo é validado antes da janela), 2ª com a janela aberta.
+        if (round === 1) {
+          writeFileSync(join(dir, 'janela'), windowJson(Date.now(), Date.now() + 3600_000));
+          const end = Date.now() + 8000;
+          while ((await http(port, 'GET', '/net/health')).body.aberto !== true && Date.now() < end) await tick(250);
+        }
+        for (const b of bodies) expect((await http(port, 'POST', '/net/session', b)).status, b).toBe(400);
+      }
+      await tick(100);
+      expect(child.exitCode).toBeNull(); // processo vivo
+      expect(stderr).toBe('');
+      const health = await http(port, 'GET', '/net/health');
+      expect(health.body.aberto).toBe(true);
+      expect(health.body.uso_do_dia).toEqual({ admissoes: 0, mensagens_reservadas: 0, sessoes_ativas: 0 });
+      expect((await admit(port)).status).toBe(201); // continua atendendo
+    } finally {
+      child.kill('SIGKILL');
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('main recusa escutar fora de 127.0.0.1 sem confirmação explícita', async () => {
     const child = spawn(process.execPath, [join(root, 'dist/main.js')], {
       env: { PATH: process.env.PATH, BT3PROBE_HOST: '0.0.0.0', BT3PROBE_PORT: '0', BT3PROBE_DB: ':memory:' },

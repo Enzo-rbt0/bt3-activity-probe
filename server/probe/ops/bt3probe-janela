@@ -14,8 +14,13 @@ case "${1:-}" in
     MIN="${2:-}"
     case "$MIN" in ''|*[!0-9]*) echo "uso: $0 abrir <minutos 1..720>" >&2; exit 2;; esac
     if [ "$MIN" -lt 1 ] || [ "$MIN" -gt 720 ]; then echo "minutos fora de 1..720" >&2; exit 2; fi
-    AGORA="$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)"  # milissegundos: comparado com o início do processo
-    ATE="$(date -u -d "+$MIN minutes" +%Y-%m-%dT%H:%M:%S.%3NZ)"
+    # O instante é lido UMA vez (ms desde 1970); o prazo é calculado a partir dele. Com duas chamadas a
+    # "date", "abrir 720" passava de 12 h por alguns ms e o servidor recusava a janela.
+    T0="$(date -u +%s%3N)"
+    T1=$((T0 + MIN * 60000))
+    fmt() { date -u -d "@$(($1 / 1000))" +%Y-%m-%dT%H:%M:%S.; printf '%03dZ' $(($1 % 1000)); }
+    AGORA="$(fmt "$T0" | tr -d '\n')"  # milissegundos: comparado com o início do processo
+    ATE="$(fmt "$T1" | tr -d '\n')"
     TMP="$(mktemp "$DIR/.janela.XXXXXX")"
     printf '{"opened_at":"%s","open_until":"%s"}\n' "$AGORA" "$ATE" > "$TMP"
     chmod 0644 "$TMP"

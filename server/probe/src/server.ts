@@ -29,6 +29,29 @@ export interface ProbeOptions {
   readWindow?: (p: string) => string | null;
 }
 
+export type SessionRequest = { ok: true; kind: Kind; durationMs: number } | { ok: false; erro: string };
+
+// Contrato do corpo de POST /net/session: um objeto JSON com "kind" (obrigatório, um de KINDS) e
+// "duration_s" (opcional, número finito > 0). Qualquer outra coisa é 400: null, array, string, número,
+// booleano, chaves desconhecidas (inclusive "__proto__") e tipos errados ("duration_s": "60").
+export function parseSessionRequest(text: string, limits: Limits): SessionRequest {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text === '' ? '{}' : text);
+  } catch {
+    return { ok: false, erro: 'JSON inválido' };
+  }
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return { ok: false, erro: 'o corpo precisa ser um objeto JSON' };
+  const keys = Object.keys(raw);
+  if (keys.some((k) => k !== 'kind' && k !== 'duration_s')) return { ok: false, erro: 'campo desconhecido' };
+  const { kind, duration_s } = raw as { kind?: unknown; duration_s?: unknown };
+  if (typeof kind !== 'string' || !KINDS.includes(kind)) return { ok: false, erro: 'tipo de sessão desconhecido' };
+  if (duration_s !== undefined && (typeof duration_s !== 'number' || !Number.isFinite(duration_s) || duration_s <= 0)) {
+    return { ok: false, erro: 'duração inválida' };
+  }
+  return { ok: true, kind: kind as Kind, durationMs: duration_s === undefined ? limits.defaultDurationMs : duration_s * 1000 };
+}
+
 export class ProbeServer {
   readonly budget: Budget;
   readonly window: WindowWatcher;
@@ -87,6 +110,10 @@ export class ProbeServer {
     for (const c of [...this.conns]) c.check();
   }
 
+  // Origin NÃO é autenticação: qualquer cliente fora do navegador (curl, script) escolhe o cabeçalho
+  // que quiser. Serve só como defesa complementar contra páginas de outros sites usando a sonda pelo
+  // navegador de alguém. O que limita abuso são os tetos (vagas, admissões e mensagens por dia) e a
+  // janela, que fica fechada fora dos testes.
   private originOk(req: IncomingMessage): boolean {
     const o = req.headers.origin;
     return typeof o === 'string' && this.origins.has(o);
@@ -169,26 +196,22 @@ export class ProbeServer {
         tooBig();
       } else chunks.push(c);
     });
+    req.on('error', () => undefined); // cliente que cai no meio do envio não derruba nada
     req.on('end', () => {
       if (aborted) return;
-      let body: { kind?: unknown; duration_s?: unknown };
+      // Nenhuma exceção pode escapar deste callback: ele roda fora do try/catch de onRequest(), e uma
+      // exceção não tratada aqui derrubaria o processo inteiro.
       try {
-        body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
-      } catch {
-        return this.json(res, 400, { erro: 'JSON inválido' });
-      }
-      if (typeof body.kind !== 'string' || !KINDS.includes(body.kind)) return this.json(res, 400, { erro: 'tipo de sessão desconhecido' });
-      const dur = body.duration_s === undefined ? this.limits.defaultDurationMs : Number(body.duration_s) * 1000;
-      if (!Number.isFinite(dur) || dur <= 0) return this.json(res, 400, { erro: 'duração inválida' });
-      const w = this.window.current();
-      if (this.stopping || !w.open) return this.json(res, 503, { erro: 'rede fechada', motivo: this.stopping ? 'servidor encerrando' : w.reason });
-      try {
-        const r = this.budget.admit(body.kind as Kind, dur, this.o.clock.now());
+        const parsed = parseSessionRequest(Buffer.concat(chunks).toString('utf8'), this.limits);
+        if (!parsed.ok) return this.json(res, 400, { erro: parsed.erro });
+        const w = this.window.current();
+        if (this.stopping || !w.open) return this.json(res, 503, { erro: 'rede fechada', motivo: this.stopping ? 'servidor encerrando' : w.reason });
+        const r = this.budget.admit(parsed.kind, parsed.durationMs, this.o.clock.now());
         if (!r.ok) {
           this.log('admissao_recusada', { status: r.status, reason: r.reason });
           return this.json(res, r.status, { erro: r.reason });
         }
-        this.log('admissao', { kind: body.kind });
+        this.log('admissao', { kind: parsed.kind });
         this.json(res, 201, {
           bilhete: r.ticket,
           bilhete_vale_ate: new Date(r.expiresAt).toISOString(),
@@ -196,8 +219,9 @@ export class ProbeServer {
           mensagens_reservadas: r.reserved,
         });
       } catch {
-        // Fail-closed: qualquer erro do banco recusa a admissão.
-        this.json(res, 503, { erro: 'erro interno: fechado' });
+        // Fail-closed: erro do banco ou qualquer falha inesperada recusa a admissão.
+        if (!res.headersSent) this.json(res, 503, { erro: 'erro interno: fechado' });
+        else res.destroy();
       }
     });
   }

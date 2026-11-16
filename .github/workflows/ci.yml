@@ -67,6 +67,25 @@ jobs:
       - name: Script do interruptor
         run: sh -n ops/bt3probe-janela
 
+  # Testes de mutação do servidor: cada mutante altera um ponto crítico (limites, bilhete, janela,
+  # reinício, validação do corpo, encerramento) e a suíte TEM de falhar. Falha o job se algum sobreviver.
+  servidor-mutacao:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: server/probe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: server/probe/package-lock.json
+      - run: npm ci
+      - name: Mutação (pontos críticos)
+        run: npm run mutacao
+
   # Testa o criar-arquivo-teste.ps1 num Windows de verdade (PowerShell 5.1, o mesmo do usuário),
   # em pastas temporárias apagadas no fim. Não publica nada e não guarda o arquivo como artefato.
   script-windows:

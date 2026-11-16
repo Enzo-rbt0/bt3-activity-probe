@@ -75,6 +75,24 @@ sudo bt3probe-janela status
 
 Os códigos 4001 e 4002 só existem depois do upgrade. Antes dele, a recusa é sempre HTTP.
 
+### Origin não é autenticação
+
+A conferência de `Origin` é **só uma defesa complementar**: ela impede que uma página de outro site use a sonda pelo navegador de alguém. Qualquer cliente fora do navegador (curl, script) escolhe o cabeçalho que quiser.
+
+O que limita abuso:
+- a **janela fechada** fora dos testes;
+- os **tetos** de vagas, admissões e mensagens por dia;
+- o bilhete de uso único.
+
+Alguém que conheça o domínio pode gastar a cota do dia **enquanto a janela estiver aberta**. Antes de um deploy público duradouro, avaliar uma proteção a mais (por exemplo, exigir uma prova ligada à sessão do Discord). Isso fica para a F3a ou depois, com aprovação.
+
+## Encerramento
+
+`systemctl stop` envia SIGTERM:
+- as sessões fecham com 1001;
+- o processo sai com 0 se tudo terminar bem;
+- se o encerramento falhar ou passar de 8 s, o log registra `encerramento_falhou` e o processo sai com **1** (o systemd mostra a unidade como `failed`).
+
 ## 5. Tetos (padrão)
 
 - 4 sessões simultâneas.

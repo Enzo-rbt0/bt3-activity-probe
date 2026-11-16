@@ -146,11 +146,10 @@ export class Budget {
     });
   }
 
+  // Somente leitura (usado por GET /net/health): não cria a linha do dia nem abre transação de escrita.
   stats(now: number): { day: string; admissions: number; reserved_msgs: number; active: number } {
-    return this.db.tx(() => {
-      const day = utcDay(now);
-      const d = this.daily(day);
-      return { day, admissions: d.admissions, reserved_msgs: d.reserved_msgs, active: this.activeCount(now) };
-    });
+    const day = utcDay(now);
+    const d = this.db.raw.prepare('SELECT admissions, reserved_msgs FROM daily WHERE day = ?').get(day) as unknown as DailyRow | undefined;
+    return { day, admissions: d?.admissions ?? 0, reserved_msgs: d?.reserved_msgs ?? 0, active: this.activeCount(now) };
   }
 }

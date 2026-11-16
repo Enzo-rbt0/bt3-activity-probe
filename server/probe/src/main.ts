@@ -7,6 +7,7 @@ import { systemClock } from './clock.js';
 import { openDb } from './db.js';
 import { makeLogger } from './log.js';
 import { DEFAULT_ORIGINS, ProbeServer } from './server.js';
+import { shutdown } from './shutdown.js';
 
 const env = process.env;
 const log = makeLogger();
@@ -31,6 +32,6 @@ await server.start();
 for (const sig of ['SIGTERM', 'SIGINT'] as const) {
   process.once(sig, () => {
     log('encerrando', { reason: sig });
-    server.stop().finally(() => process.exit(0));
+    void shutdown(() => server.stop(), log, (code) => process.exit(code));
   });
 }

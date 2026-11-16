@@ -4,12 +4,15 @@
   "private": true,
   "description": "Backend de rede da sonda (F3). Só código e testes locais na F3-0: nada de deploy.",
   "type": "module",
-  "engines": { "node": ">=22.13" },
+  "engines": {
+    "node": ">=22.13"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "start": "node --disable-warning=ExperimentalWarning dist/main.js"
+    "start": "node --disable-warning=ExperimentalWarning dist/main.js",
+    "mutacao": "node scripts/mutacao.mjs"
   },
   "dependencies": {
     "ws": "8.22.0"

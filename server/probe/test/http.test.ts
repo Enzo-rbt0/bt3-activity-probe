@@ -1,7 +1,18 @@
 // T3 health e T11 privacidade/Origin/limites do corpo; recusas antes do upgrade são HTTP.
 import { afterEach, describe, expect, it } from 'vitest';
+import { DEFAULT_LIMITS } from '../src/budget.js';
 import { makeLogger } from '../src/log.js';
+import { parseSessionRequest } from '../src/server.js';
 import { admit, connect, harness, http, openSession, ORIGIN, tick, type Harness } from './helpers.js';
+
+// JSON válido mas fora do contrato (e inválido): todos têm de dar 400 sem gastar nada.
+const BAD_BODIES = [
+  'null', '[]', '[{"kind":"echo"}]', '"echo"', '42', 'true', 'false', '{}',
+  '{"kind":null}', '{"kind":["echo"]}', '{"kind":{"k":"echo"}}', '{"kind":"ECHO"}', '{"kind":"relay"}',
+  '{"kind":"echo","duration_s":"60"}', '{"kind":"echo","duration_s":null}', '{"kind":"echo","duration_s":0}',
+  '{"kind":"echo","duration_s":-1}', '{"kind":"echo","duration_s":[60]}', '{"kind":"echo","duration_s":1e400}',
+  '{"kind":"echo","extra":1}', '{"__proto__":{"kind":"echo"}}', '{"kind":"echo","__proto__":{}}', '{nope', '\u0000',
+];
 
 let h: Harness | null = null;
 afterEach(async () => {
@@ -67,6 +78,29 @@ describe('T11 — Origin, corpo e privacidade', () => {
     expect((await http(h.port, 'GET', '/net/outra')).status).toBe(404);
     // Nada disso consumiu orçamento.
     expect(h.server.budget.stats(h.clock.now()).admissions).toBe(0);
+  });
+
+  it('parseSessionRequest: só objeto com kind conhecido e duration_s numérico positivo', () => {
+    for (const b of BAD_BODIES) expect(parseSessionRequest(b, DEFAULT_LIMITS).ok, b).toBe(false);
+    expect(parseSessionRequest('', DEFAULT_LIMITS).ok).toBe(false); // corpo vazio = {} = sem kind
+    expect(parseSessionRequest('{"kind":"echo"}', DEFAULT_LIMITS)).toEqual({ ok: true, kind: 'echo', durationMs: 60_000 });
+    expect(parseSessionRequest('{"kind":"echo","duration_s":1.5}', DEFAULT_LIMITS)).toEqual({ ok: true, kind: 'echo', durationMs: 1500 });
+    expect(parseSessionRequest('null', DEFAULT_LIMITS)).toEqual({ ok: false, erro: 'o corpo precisa ser um objeto JSON' });
+  });
+
+  it(`${BAD_BODIES.length} corpos fora do contrato → 400 cada, servidor segue vivo e nada é reservado`, async () => {
+    h = await harness();
+    for (const b of BAD_BODIES) expect((await http(h.port, 'POST', '/net/session', b)).status, b).toBe(400);
+    expect(h.server.budget.stats(h.clock.now())).toMatchObject({ admissions: 0, reserved_msgs: 0, active: 0 });
+    expect((await admit(h.port)).status).toBe(201);
+  });
+
+  it('GET /net/health é somente leitura: não cria linha no banco nem abre transação', async () => {
+    h = await harness();
+    const before = h.db.accesses;
+    for (let i = 0; i < 3; i++) expect((await http(h.port, 'GET', '/net/health')).status).toBe(200);
+    expect(h.db.raw.prepare('SELECT COUNT(*) AS n FROM daily').get()).toEqual({ n: 0 });
+    expect(h.db.accesses).toBe(before);
   });
 
   it('duração acima do máximo é limitada a 180 s', async () => {

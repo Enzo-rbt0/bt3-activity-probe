@@ -32,6 +32,9 @@ describe('T2 — janela (fail-closed)', () => {
     expect(parseWindow(windowJson(START, START + 1000), proc, START + 1000).open).toBe(false);
     expect(parseWindow(windowJson(START, START + MAX_WINDOW_MS + 1), proc, START).open).toBe(false);
     expect(parseWindow(windowJson(START, START + MAX_WINDOW_MS), proc, START).open).toBe(true);
+    // Aberta há 1 h com prazo 11 h + 1 ms à frente: faltam < 12 h, mas a janela inteira passa de 12 h.
+    expect(parseWindow(windowJson(START + 1000, START + 1000 + MAX_WINDOW_MS + 1), proc, START + 3600_000).open).toBe(false);
+    expect(parseWindow(windowJson(START + 1000, START + 1000 + MAX_WINDOW_MS), proc, START + 3600_000).open).toBe(true);
     expect(parseWindow(windowJson(START + 2 * 60_000, START + H), proc, START).open).toBe(false);
   });
 
@@ -74,6 +77,13 @@ describe('T2 — script ops/bt3probe-janela', () => {
     expect(s.open).toBe(true);
     expect(s.until! - Date.now()).toBeGreaterThan(119 * 60_000);
     expect(s.until! - Date.now()).toBeLessThanOrEqual(120 * 60_000);
+    // Máximo permitido: exatamente 12 h, aceito pelo servidor (antes passava alguns ms e era recusado).
+    for (let i = 0; i < 5; i++) {
+      expect(run('abrir', '720').status).toBe(0);
+      const j = JSON.parse(readFileSync(arq, 'utf8')) as { opened_at: string; open_until: string };
+      expect(Date.parse(j.open_until) - Date.parse(j.opened_at)).toBe(MAX_WINDOW_MS);
+      expect(parseWindow(JSON.stringify(j), inicio, Date.now())).toMatchObject({ open: true, until: Date.parse(j.open_until) });
+    }
     expect(run('abrir', '721').status).toBe(2);
     expect(run('abrir', '0').status).toBe(2);
     expect(run('abrir', '-5').status).toBe(2);
