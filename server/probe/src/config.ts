@@ -4,11 +4,11 @@
 // Fechado (fail-closed) se: arquivo ausente/ilegível/inválido; open_until anterior ou igual a opened_at;
 // open_until no passado; janela (open_until − opened_at) maior que 12 h; opened_at mais de 60 s no futuro;
 // ou **opened_at anterior ao início deste processo**.
+// Esta última regra é a do reinício: um processo novo nunca reaproveita uma janela aberta antes dele,
+// mesmo que ainda tenha tempo restante. É preciso rodar "abrir" de novo (nova autorização).
 // Não há regra separada para o tempo restante: com opened_at ≤ agora + 60 s e janela ≤ 12 h, o tempo
 // restante já fica limitado a 12 h + 60 s. A regra antiga ("restante ≤ 12 h") recusava janelas de 12 h
 // exatas quando a leitura do relógio do servidor ficava atrás de opened_at (dentro da tolerância de 60 s).
-// Esta última regra é a do reinício: um processo novo nunca reaproveita uma janela aberta antes dele,
-// mesmo que ainda tenha tempo restante. É preciso rodar "abrir" de novo (nova autorização).
 import { readFileSync } from 'node:fs';
 import type { Clock, TimerHandle } from './clock.js';
 
