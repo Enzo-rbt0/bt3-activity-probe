@@ -1,0 +1,41 @@
+#!/bin/sh
+# Interruptor da rede da sonda. Roda na VM, por SSH, por quem opera (nunca por agente, nunca pela web).
+#   sudo bt3probe-janela abrir 120   → abre por 120 minutos (máximo 720 = 12 h)
+#   sudo bt3probe-janela fechar      → fecha na hora (em até 5 s as sessões recebem 4001)
+#   sudo bt3probe-janela status
+# "abrir" grava opened_at = agora. Se o serviço reiniciar depois disso, a janela fica FECHADA até rodar
+# "abrir" de novo (o servidor ignora janelas abertas antes do próprio início).
+set -eu
+ARQ="${BT3PROBE_WINDOW_FILE:-/etc/bt3probe/janela}"
+DIR="$(dirname "$ARQ")"
+
+case "${1:-}" in
+  abrir)
+    MIN="${2:-}"
+    case "$MIN" in ''|*[!0-9]*) echo "uso: $0 abrir <minutos 1..720>" >&2; exit 2;; esac
+    if [ "$MIN" -lt 1 ] || [ "$MIN" -gt 720 ]; then echo "minutos fora de 1..720" >&2; exit 2; fi
+    # O instante é lido UMA vez (ms desde 1970); o prazo é calculado a partir dele. Com duas chamadas a
+    # "date", "abrir 720" passava de 12 h por alguns ms e o servidor recusava a janela.
+    T0="$(date -u +%s%3N)"
+    T1=$((T0 + MIN * 60000))
+    fmt() { date -u -d "@$(($1 / 1000))" +%Y-%m-%dT%H:%M:%S.; printf '%03dZ' $(($1 % 1000)); }
+    AGORA="$(fmt "$T0" | tr -d '\n')"  # milissegundos: comparado com o início do processo
+    ATE="$(fmt "$T1" | tr -d '\n')"
+    TMP="$(mktemp "$DIR/.janela.XXXXXX")"
+    printf '{"opened_at":"%s","open_until":"%s"}\n' "$AGORA" "$ATE" > "$TMP"
+    chmod 0644 "$TMP"
+    mv -f "$TMP" "$ARQ" # troca atômica: o servidor nunca lê um arquivo pela metade
+    echo "aberta de $AGORA até $ATE (UTC)"
+    ;;
+  fechar)
+    rm -f "$ARQ"
+    echo "fechada"
+    ;;
+  status)
+    if [ -f "$ARQ" ]; then cat "$ARQ"; else echo "fechada (sem arquivo)"; fi
+    ;;
+  *)
+    echo "uso: $0 abrir <minutos> | fechar | status" >&2
+    exit 2
+    ;;
+esac

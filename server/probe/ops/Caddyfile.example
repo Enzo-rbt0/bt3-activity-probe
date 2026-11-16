@@ -1,0 +1,20 @@
+# Exemplo de Caddyfile para a VM. Troque SEU_DOMINIO pelo domínio escolhido na F3a (ainda sem autorização).
+# Sem bloco "log": o Caddy não grava log de acesso (IPs e URLs com bilhete ficam fora do disco).
+SEU_DOMINIO {
+	encode zstd gzip
+
+	# Só /net/* chega ao servidor da sonda; o resto responde 404.
+	handle /net/* {
+		reverse_proxy 127.0.0.1:8787
+	}
+	handle {
+		respond 404
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		-Server
+	}
+}

@@ -9,3 +9,4 @@ apps/probe/public/emcc/
 # Arquivo sintético da F2b (nunca vai para o GitHub)
 *.bt3probe-large.bin
 emsdk-cache/
+server/probe/dist/
