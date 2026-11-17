@@ -1,7 +1,7 @@
 // Tetos configuráveis pela VM, sem mudar código. Arquivo JSON gravado pelo script ops/bt3probe-limites
 // (via SSH, por quem opera a VM) e lido UMA vez, na inicialização do processo:
 //   {"mensagens_dia":300000,"admissoes_dia":60}
-// Só as 5 chaves de CHAVES podem aparecer; as ausentes ficam no padrão do código (DEFAULT_LIMITS).
+// Só as 6 chaves de CHAVES podem aparecer; as ausentes ficam no padrão do código (DEFAULT_LIMITS).
 // Fail-safe: arquivo ilegível, JSON inválido, chave desconhecida, valor não inteiro, abaixo do mínimo ou
 // acima do teto absoluto → o arquivo INTEIRO é ignorado e valem os padrões do código. Um erro de
 // configuração nunca deixa o servidor mais permissivo do que o padrão.
@@ -9,7 +9,7 @@
 import { readFileSync } from 'node:fs';
 import { DEFAULT_LIMITS, type Limits } from './budget.js';
 
-type Campo = 'maxReservedPerDay' | 'maxAdmissionsPerDay' | 'maxConcurrent' | 'maxRatePerSec' | 'maxDurationMs';
+type Campo = 'maxReservedPerDay' | 'maxAdmissionsPerDay' | 'maxConcurrent' | 'maxRatePerSec' | 'maxBurst' | 'maxDurationMs';
 interface Regra { campo: Campo; min: number; max: number; escala: number }
 
 // Tetos ABSOLUTOS: o arquivo nunca passa disso (protege contra erro de digitação, como um zero a mais).
@@ -18,6 +18,7 @@ export const CHAVES: Readonly<Record<string, Regra>> = {
   admissoes_dia: { campo: 'maxAdmissionsPerDay', min: 1, max: 200, escala: 1 },
   conexoes_simultaneas: { campo: 'maxConcurrent', min: 1, max: 8, escala: 1 },
   mensagens_por_segundo: { campo: 'maxRatePerSec', min: 1, max: 240, escala: 1 },
+  rajada_mensagens: { campo: 'maxBurst', min: 1, max: 1000, escala: 1 },
   duracao_maxima_s: { campo: 'maxDurationMs', min: 1, max: 600, escala: 1000 },
 };
 

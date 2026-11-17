@@ -94,24 +94,48 @@ describe('T7 — limites do eco (fechamento 4002, conexão já estabelecida)', (
     await waitFor(() => h!.server.conns.size === 0);
   });
 
-  it('taxa: 120 mensagens no mesmo instante passam, a 121ª → 4002', async () => {
+  it('rajada: 360 mensagens no mesmo instante passam, a 361ª → 4002', async () => {
     h = await harness();
     const s = await openSession(h.port, 180);
-    for (let i = 0; i < 121; i++) s.ws.send('r');
+    for (let i = 0; i < 361; i++) s.ws.send('r');
     expect(await s.closed).toEqual({ code: 4002, reason: 'taxa acima do limite' });
-    expect(s.messages.length).toBe(120);
+    expect(s.messages.length).toBe(360);
   });
 
-  it('taxa repõe com o tempo: depois de 1 s cabem mais 120', async () => {
+  it('taxa média: com o balde vazio, repõe 120 por segundo (nem mais, nem menos)', async () => {
     h = await harness();
     const s = await openSession(h.port, 180);
-    for (let i = 0; i < 120; i++) s.ws.send('r');
-    await waitFor(() => s.messages.length === 120);
+    for (let i = 0; i < 360; i++) s.ws.send('r');
+    await waitFor(() => s.messages.length === 360);
     h.clock.advance(1000);
     for (let i = 0; i < 120; i++) s.ws.send('r');
-    await waitFor(() => s.messages.length === 240);
-    s.ws.close();
-    expect((await s.closed).code).toBe(1005);
+    await waitFor(() => s.messages.length === 480);
+    s.ws.send('r'); // balde vazio de novo, sem tempo passar
+    expect(await s.closed).toEqual({ code: 4002, reason: 'taxa acima do limite' });
+    expect(s.messages.length).toBe(480);
+  });
+
+  it('achado da F3b: 60/s com engasgo de rede de 5,5 s (330 represadas chegam juntas) NÃO derruba; 6,5 s (390) derruba', async () => {
+    const run = async (stallMs: number) => {
+      h = await harness();
+      const s = await openSession(h.port, 180);
+      // 2 s normais a 60 Hz
+      for (let t = 0; t < 120; t++) {
+        s.ws.send('r');
+        await waitFor(() => s.messages.length === t + 1);
+        h.clock.advance(1000 / 60);
+      }
+      // engasgo: nada chega ao servidor; depois, tudo o que o cliente mandou chega junto
+      h.clock.advance(stallMs);
+      const n = Math.round((stallMs / 1000) * 60);
+      for (let i = 0; i < n; i++) s.ws.send('r');
+      const r = await Promise.race([s.closed, waitFor(() => s.messages.length === 120 + n, 5000).then(() => 'ok' as const)]);
+      await h.close();
+      h = null;
+      return r;
+    };
+    expect(await run(5500)).toBe('ok');
+    expect(await run(6500)).toEqual({ code: 4002, reason: 'taxa acima do limite' });
   });
 
   it('cota reservada esgotada → 4002', async () => {

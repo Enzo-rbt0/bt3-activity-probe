@@ -39,7 +39,7 @@ export class Conn {
   ) {
     const now = clock.now();
     this.lastMsgAt = now;
-    this.tokens = limits.maxRatePerSec;
+    this.tokens = limits.maxBurst;
     this.tokensAt = now;
     this.schedule();
   }
@@ -73,8 +73,10 @@ export class Conn {
     if (!this.check()) return;
     const now = this.clock.now();
     if (data.length > this.limits.maxMsgBytes) return this.close(CLOSE_LIMIT, 'mensagem grande demais');
-    // Token bucket: até maxRatePerSec mensagens por segundo, com rajada do mesmo tamanho.
-    this.tokens = Math.min(this.limits.maxRatePerSec, this.tokens + ((now - this.tokensAt) / 1000) * this.limits.maxRatePerSec);
+    // Token bucket: repõe maxRatePerSec fichas por segundo (taxa média) num balde de maxBurst (rajada
+    // máxima). Achado da F3b: com balde = taxa (120), um engasgo de 2,3 s no Wi-Fi fazia ~136 mensagens
+    // represadas chegarem juntas e a conexão de um usuário legítimo caía com 4002.
+    this.tokens = Math.min(this.limits.maxBurst, this.tokens + ((now - this.tokensAt) / 1000) * this.limits.maxRatePerSec);
     this.tokensAt = now;
     if (this.tokens < 1) return this.close(CLOSE_LIMIT, 'taxa acima do limite');
     this.tokens -= 1;

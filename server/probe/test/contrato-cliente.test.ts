@@ -176,8 +176,8 @@ describe('contrato N-ECHO (F3b) × servidor real', () => {
     }
   });
 
-  it('servidor com taxa máxima abaixo de 60/s fecha com 4002 → o cliente dá RP "limite" e não reconecta', async () => {
-    h = await harness({ limits: { maxRatePerSec: 30 } });
+  it('servidor com taxa e rajada abaixo de 60/s fecha com 4002 → o cliente dá RP "limite" e não reconecta', async () => {
+    h = await harness({ limits: { maxRatePerSec: 30, maxBurst: 30 } });
     const stopClock = followRealTime(h);
     try {
       const e = new EchoTest(

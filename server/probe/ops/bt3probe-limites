@@ -6,7 +6,7 @@
 #   sudo bt3probe-limites padrao                          → apaga o arquivo: tudo volta ao padrão
 # Chaves e tetos absolutos (conferidos pelo próprio código do servidor, dist/limits.js):
 #   mensagens_dia 1..1000000 · admissoes_dia 1..200 · conexoes_simultaneas 1..8
-#   mensagens_por_segundo 1..240 · duracao_maxima_s 1..600
+#   mensagens_por_segundo 1..240 · rajada_mensagens 1..1000 · duracao_maxima_s 1..600
 # O servidor lê o arquivo só ao iniciar: mudar reinicia o serviço, e o reinício FECHA a janela de rede
 # (de propósito). Para testar de novo, rode "bt3probe-janela abrir" outra vez.
 set -eu
@@ -48,6 +48,13 @@ grava() { # $1 = conteúdo
   mv -f "$TMP" "$ARQ" # troca atômica
 }
 
+espera_servico() { # até ~10 s: logo depois de um (re)início o serviço ainda pode estar subindo
+  i=0
+  while [ "$i" -lt 20 ] && ! curl -sf --max-time 1 "http://127.0.0.1:$PORTA/net/health" >/dev/null 2>&1; do
+    sleep 0.5; i=$((i + 1))
+  done
+}
+
 tetos_em_uso() {
   if ! SAUDE="$(curl -sf --max-time 3 "http://127.0.0.1:$PORTA/net/health")"; then
     echo "o serviço não respondeu em 127.0.0.1:$PORTA (veja: sudo journalctl -u bt3probe -n 20)"
@@ -67,16 +74,14 @@ reinicia() {
   if [ "${BT3PROBE_NO_RESTART:-}" = "1" ]; then echo "(reinício pulado: BT3PROBE_NO_RESTART=1)"; return 0; fi
   systemctl restart bt3probe
   echo "serviço reiniciado: a janela de rede está FECHADA (abra de novo com bt3probe-janela, se for testar)"
-  i=0
-  while [ "$i" -lt 20 ] && ! curl -sf --max-time 1 "http://127.0.0.1:$PORTA/net/health" >/dev/null 2>&1; do
-    sleep 0.5; i=$((i + 1))
-  done
+  espera_servico
   tetos_em_uso
 }
 
 case "${1:-}" in
   mostrar)
     if [ -f "$ARQ" ]; then echo "arquivo $ARQ:"; cat "$ARQ"; echo; else echo "sem arquivo: valem os tetos padrão do código"; fi
+    [ "${BT3PROBE_NO_WAIT:-}" = "1" ] || espera_servico
     tetos_em_uso
     ;;
   definir)

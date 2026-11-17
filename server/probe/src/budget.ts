@@ -18,6 +18,9 @@ export interface Limits {
   margin: number;
   maxMsgBytes: number;
   maxRatePerSec: number;
+  // Tamanho do balde (rajada máxima). Separado da taxa média desde a F3b: depois de um engasgo de rede
+  // de até ~6 s, as mensagens represadas (60/s) chegam juntas e não podem derrubar a conexão.
+  maxBurst: number;
   idleMs: number;
 }
 
@@ -32,6 +35,7 @@ export const DEFAULT_LIMITS: Limits = {
   margin: 1.1,
   maxMsgBytes: 64,
   maxRatePerSec: 120,
+  maxBurst: 360,
   idleMs: 60_000,
 };
 

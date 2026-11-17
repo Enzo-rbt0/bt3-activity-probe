@@ -25,8 +25,8 @@ describe('T15 — parseLimits (validação)', () => {
   });
 
   it('cada chave vai para o campo certo (duração em segundos vira ms)', () => {
-    const p = parseLimits(JSON.stringify({ conexoes_simultaneas: 6, mensagens_por_segundo: 200, duracao_maxima_s: 300 }));
-    expect(p.ok && p.limits).toEqual({ ...DEFAULT_LIMITS, maxConcurrent: 6, maxRatePerSec: 200, maxDurationMs: 300_000 });
+    const p = parseLimits(JSON.stringify({ conexoes_simultaneas: 6, mensagens_por_segundo: 200, rajada_mensagens: 500, duracao_maxima_s: 300 }));
+    expect(p.ok && p.limits).toEqual({ ...DEFAULT_LIMITS, maxConcurrent: 6, maxRatePerSec: 200, maxBurst: 500, maxDurationMs: 300_000 });
   });
 
   it('aceita exatamente os extremos de cada chave e recusa um a mais ou a menos', () => {
@@ -44,6 +44,7 @@ describe('T15 — parseLimits (validação)', () => {
       admissoes_dia: [1, 200],
       conexoes_simultaneas: [1, 8],
       mensagens_por_segundo: [1, 240],
+      rajada_mensagens: [1, 1000],
       duracao_maxima_s: [1, 600],
     });
   });
