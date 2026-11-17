@@ -1,5 +1,5 @@
 // Teste de fumaça: abre a build pronta (apps/probe/dist) num Chromium sem tela e confere que a sonda
-// termina e produz um relatório válido (formato 4). Cenários:
+// termina e produz um relatório válido (formato 5). Cenários:
 //   1. standalone: WebAssembly, JSPI/Asyncify, IndexedDB e o save entre sessões (grava, recarrega,
 //      encontra) funcionando fora do Discord;
 //   2. URL com parâmetros do Discord falsos e sem Discord por trás: A-ENV = RP depois de 10 s;
@@ -8,6 +8,9 @@
 //   4. Interativos (F2b) com teclado, toque de vários dedos, tela cheia, áudio e os dois arquivos.
 //      O arquivo de 3 GiB é esparso, criado numa pasta temporária fora do repositório e apagado no
 //      fim; nunca vira artefato. O controle não é simulável: espera-se INV (API sem controle).
+//   5. Rede (F3a): 5 conexões de eco contra um servidor SIMULADO pelo próprio Playwright.
+// Em TODOS os cenários o endereço do servidor real (sonda.kingszin.com.br) é interceptado: a CI nunca
+// fala com a VM, nem gasta admissões dela.
 // Fora do Discord isso prova que o CÓDIGO funciona; não prova nada sobre o Discord.
 // Também falha se a build contiver eval/new Function. Pré-requisito: `npm run build`.
 // REQUIRE_EMCC=1 (CI) exige que os testes do Emscripten rodem e passem.
@@ -19,7 +22,7 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { create as createLarge } from './criar-arquivo-teste.mjs';
-import validate from '../packages/report-schema/generated/validate-report-v4.mjs';
+import validate from '../packages/report-schema/generated/validate-report-v5.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const dist = join(root, 'apps/probe/dist');
@@ -93,6 +96,42 @@ function check(name, report, expect) {
 
 const emcc = REQUIRE_EMCC ? ['AP'] : ['AP', 'SKIP'];
 
+// Servidor da F3 simulado. Responde como o real (health, admissão com bilhete, eco por WebSocket) e
+// conta o que recebeu. Qualquer outra coisa para o host real vira 404: nada sai para a internet.
+const SONDA = 'https://sonda.kingszin.com.br';
+const TICKET = 'fedcba9876543210fedcba9876543210';
+async function fakeServer(ctx, { open }) {
+  const seen = { health: 0, session: 0, ws: 0, bodies: [] };
+  const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type', 'access-control-allow-methods': 'GET, POST' };
+  await ctx.route(`${SONDA}/**`, async (route) => {
+    const req = route.request();
+    const path = new URL(req.url()).pathname;
+    if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
+    if (path === '/net/health' && req.method() === 'GET') {
+      seen.health++;
+      return route.fulfill({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify({ aberto: open, fecha_em: null, motivo: 'simulado', tetos: { sessoes_simultaneas: 4 }, uso_do_dia: null }) });
+    }
+    if (path === '/net/session' && req.method() === 'POST') {
+      seen.session++;
+      seen.bodies.push(req.postData());
+      if (!open) return route.fulfill({ status: 503, headers: cors, contentType: 'application/json', body: '{"erro":"rede fechada"}' });
+      return route.fulfill({ status: 201, headers: cors, contentType: 'application/json', body: JSON.stringify({ bilhete: TICKET, bilhete_vale_ate: 'x', duracao_s: 5, mensagens_reservadas: 330 }) });
+    }
+    return route.fulfill({ status: 404, headers: cors, body: '' });
+  });
+  await ctx.routeWebSocket(/^wss:\/\/sonda\.kingszin\.com\.br\//, (ws) => {
+    seen.ws++;
+    if (!open || !ws.url().includes(`bilhete=${TICKET}`)) return ws.close({ code: 1008, reason: 'recusado' });
+    ws.onMessage((m) => ws.send(Buffer.from(m))); // como o servidor real: eco em binário
+  });
+  return seen;
+}
+
+async function waitNet(page, key) {
+  await page.waitForFunction((k) => JSON.parse(document.querySelector('#json').value).tests[k].detail !== 'verificando…', key, { timeout: 15_000 });
+  return JSON.parse(await page.inputValue('#json'));
+}
+
 let browser;
 try {
   await waitForServer(BASE, 20_000);
@@ -103,6 +142,7 @@ try {
   // Cenário 1: standalone + save entre sessões (grava, recarrega a página, encontra).
   {
     const ctx = await browser.newContext();
+    const seen = await fakeServer(ctx, { open: false });
     const page = await ctx.newPage();
     const errors = [];
     page.on('pageerror', (e) => errors.push(String(e)));
@@ -130,6 +170,10 @@ try {
     if (r.tests['A-IDB-PERSIST'].state_at_open !== 'confirmed') fail('standalone-terceira: recibo de confirmação não encontrado');
     if (!(await page.isDisabled('#persist-missing'))) fail('standalone-terceira: botão "sumiu" deveria estar desabilitado');
     if (!['confirmed', 'software', 'unknown'].includes(r.tests['A-GL2'].gpu_acceleration_status)) fail('A-GL2 sem gpu_acceleration_status');
+    r = await waitNet(page, 'N-HTTP');
+    check('standalone-rede', r, { 'N-HTTP': ['AP'], 'N-PATH': ['SKIP'], 'N-WS-OPEN': ['SKIP'] });
+    if (r.tests['N-HTTP'].route !== 'absoluto' || r.tests['N-HTTP'].server_region !== 'us-phoenix-1') fail('standalone-rede: rota/região erradas');
+    if (seen.session !== 0) fail('standalone-rede: admissão pedida sem apertar o botão');
     if (errors.length) fail(`standalone: erros na página: ${errors.join(' | ')}`);
     await ctx.close();
   }
@@ -138,8 +182,13 @@ try {
   {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
-    const r = await openProbe(page, '?frame_id=f&instance_id=i&platform=desktop', 30_000);
+    await fakeServer(ctx, { open: true });
+    let r = await openProbe(page, '?frame_id=f&instance_id=i&platform=desktop', 30_000);
     check('discord-falso', r, { 'A-ENV': ['RP'], 'A-WASM-EMBED': ['AP'] });
+    // Sem Discord por trás, /net/health cai no servidor de preview (não é a sonda): N-PATH = RP.
+    r = await waitNet(page, 'N-PATH');
+    check('discord-falso-rede', r, { 'N-PATH': ['RP'], 'N-HTTP': ['RP'], 'N-WS-OPEN': ['SKIP'] });
+    if (!r.tests['N-PATH'].routes.every((x) => x.tested)) fail('discord-falso-rede: nem todos os caminhos foram testados');
     if (r.context.storage_context !== 'discord-web') fail(`discord-falso: storage_context=${r.context.storage_context}`);
     await ctx.close();
   }
@@ -147,6 +196,7 @@ try {
   // Cenário 3: CSP restrita sem 'wasm-unsafe-eval'.
   {
     const ctx = await browser.newContext();
+    await fakeServer(ctx, { open: false });
     const page = await ctx.newPage();
     await page.route(BASE, async (route) => {
       const res = await route.fetch();
@@ -169,6 +219,7 @@ try {
     try {
       const largePath = createLarge(tmp);
       const ctx = await browser.newContext({ hasTouch: true, viewport: { width: 900, height: 900 } });
+      await fakeServer(ctx, { open: false });
       const page = await ctx.newPage();
       const errors = [];
       page.on('pageerror', (e) => errors.push(String(e)));
@@ -229,6 +280,30 @@ try {
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
+  }
+  // Cenário 5: rede (F3a) com servidor simulado aberto: 5 conexões de eco.
+  {
+    const ctx = await browser.newContext();
+    const seen = await fakeServer(ctx, { open: true });
+    const page = await ctx.newPage();
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(String(e)));
+    await openProbe(page, '', 20_000);
+    await waitNet(page, 'N-HTTP');
+    await page.locator('#card-NET').getByRole('button', { name: 'Testar 5 conexões', exact: true }).click();
+    await page.waitForFunction(() => {
+      const t = JSON.parse(document.querySelector('#json').value).tests['N-WS-OPEN'];
+      return t.ran && !t.detail.startsWith('em andamento');
+    }, undefined, { timeout: 30_000 });
+    const r = JSON.parse(await page.inputValue('#json'));
+    check('rede', r, { 'N-HTTP': ['AP'], 'N-PATH': ['SKIP'], 'N-WS-OPEN': ['AP'] });
+    const w = r.tests['N-WS-OPEN'];
+    if (w.opened !== 5 || w.echoed !== 5) fail(`rede: abertas ${w.opened}, eco ${w.echoed}`);
+    if (seen.session !== 5 || seen.ws !== 5) fail(`rede: servidor viu ${seen.session} admissões e ${seen.ws} WebSockets`);
+    if (!seen.bodies.every((b) => b === '{"kind":"echo","duration_s":5}')) fail(`rede: corpo de admissão inesperado ${seen.bodies[0]}`);
+    if (JSON.stringify(r).includes(TICKET)) fail('rede: bilhete foi para o relatório');
+    if (errors.length) fail(`rede: erros na página: ${errors.join(' | ')}`);
+    await ctx.close();
   }
 } catch (e) {
   fail(String(e?.stack ?? e));

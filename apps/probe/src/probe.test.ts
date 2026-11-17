@@ -9,6 +9,8 @@ import { AudioTest, FileBasicTest, FileLargeTest, FsTest } from './tests/b-media
 import { classifyGl2, gpuAcceleration, isSoftwareRenderer } from './tests/a-gl2';
 import type { Gl2Result, Tests } from './report/types';
 import { FEATURE_KEYS } from './report/types';
+import { httpResult, pathResult, runPathChecks, WsOpenTest } from './tests/c-net';
+import { fakeFetch, fakeWs, HEALTH, now, PAGE, res, server, T, TICKET } from './test-helpers/net-fakes';
 
 const DISCORD_QS = '?frame_id=f1&instance_id=i-123&platform=desktop&guild_id=999&channel_id=888';
 
@@ -144,6 +146,10 @@ function fullTests(): Tests {
     'A-AUDIO': new AudioTest().result(),
     'A-FILE-BASIC': new FileBasicTest().result(),
     'A-FILE-LARGE': new FileLargeTest().result(),
+    // Rede (F3a) no estado inicial ("verificando…" / "ainda não feito").
+    'N-HTTP': httpResult(null, 'discord'),
+    'N-PATH': pathResult(null, 'discord'),
+    'N-WS-OPEN': new WsOpenTest({ fetch: async () => { throw new Error('sem rede'); }, now: () => 0, WebSocket: class {} as never }).result(),
   };
 }
 
@@ -189,7 +195,7 @@ describe('relatório e schema', () => {
     const v = validateReport(r);
     expect(v.errors).toEqual([]);
     expect(v.ok).toBe(true);
-    expect(r.schema).toBe('bt3probe.report/4');
+    expect(r.schema).toBe('bt3probe.report/5');
     expect(r.run.duration_ms).toBe(813);
     expect(reportFileName(r)).toBe('bt3probe-discord-desktop-app-2026-11-15T12-05-00-000Z.json');
   });
@@ -226,7 +232,7 @@ describe('relatório e schema', () => {
   });
   it('relatórios da F2a (formato 2) e da F2b-0 (formato 3) continuam válidos', () => {
     const r = buildReport(input()) as unknown as Record<string, unknown> & { tests: Record<string, unknown> };
-    const { 'A-KEY': _1, 'A-PAD': _2, 'A-TOUCH': _3, 'A-FS': _4, 'A-AUDIO': _5, 'A-FILE-BASIC': _6, 'A-FILE-LARGE': _7, ...f2a } = r.tests;
+    const { 'A-KEY': _1, 'A-PAD': _2, 'A-TOUCH': _3, 'A-FS': _4, 'A-AUDIO': _5, 'A-FILE-BASIC': _6, 'A-FILE-LARGE': _7, 'N-HTTP': _8, 'N-PATH': _9, 'N-WS-OPEN': _10, ...f2a } = r.tests;
     const v3 = { ...r, schema: 'bt3probe.report/3', tests: f2a };
     // Formato 3 (F2b-0, publicado na 0.2.1) continua válido; o formato 4 exige os testes da F2b.
     expect(validateReport(v3).errors).toEqual([]);
@@ -246,6 +252,40 @@ describe('relatório e schema', () => {
     expect(validateReport(v2).errors).toEqual([]);
     // O formato 3 exige os campos novos.
     expect(validateReport({ ...v2, schema: 'bt3probe.report/3' }).ok).toBe(false);
+  });
+  it('relatório da F2b (formato 4) continua válido; o formato 5 exige os testes de rede', () => {
+    const r = buildReport(input()) as unknown as Record<string, unknown> & { tests: Record<string, unknown> };
+    const { 'N-HTTP': _1, 'N-PATH': _2, 'N-WS-OPEN': _3, ...f2b } = r.tests;
+    const v4 = { ...r, schema: 'bt3probe.report/4', tests: f2b };
+    expect(validateReport(v4).errors).toEqual([]);
+    expect(validateReport({ ...v4, schema: 'bt3probe.report/5' }).ok).toBe(false);
+  });
+  it('rede: resultados reais (sucesso, falhas variadas e caminhos) passam no schema v5', async () => {
+    const W = fakeWs(['ok', 'recusa', 'fecha-4002', 'trava', 'eco-errado']);
+    const t = new WsOpenTest({ fetch: fakeFetch(server()), now, timeoutMs: T, WebSocket: W });
+    await t.run({ httpBase: PAGE, wsBase: 'wss://x.discordsays.com' });
+    const discord = await runPathChecks({ fetch: fakeFetch((u) => (u.includes('kingszin') ? 'falha' : u.includes('.proxy') ? res(404, '') : res(200, HEALTH(true)))), now, timeoutMs: T }, 'discord', PAGE);
+    const alone = await runPathChecks({ fetch: fakeFetch(() => 'trava'), now, timeoutMs: T }, 'standalone', 'https://enzo-rbt0.github.io');
+    for (const [run, mode] of [[discord, 'discord'], [alone, 'standalone']] as const) {
+      const r = buildReport(input({ tests: { ...fullTests(), 'N-HTTP': httpResult(run, mode), 'N-PATH': pathResult(run, mode), 'N-WS-OPEN': t.result() } }));
+      expect(validateReport(r).errors).toEqual([]);
+      expect(JSON.stringify(r)).not.toContain(TICKET);
+    }
+    expect(t.result().attempts).toHaveLength(5);
+  });
+  it('rede: não aceita bilhete, URL ou IP no relatório', () => {
+    const r = buildReport(input()) as unknown as Record<string, Record<string, unknown>>;
+    const t = r.tests as Record<string, Record<string, unknown>>;
+    const attempt = {
+      n: 1, admit_status: 201, open_ok: true, open_ms: 80, echo_ok: true, echo_ms: 70, close_code: 1000,
+      closed_by_server: false, failed_stage: null, error: null,
+    };
+    const ws = { ...t['N-WS-OPEN'], status: 'INV', ran: true, window_open: true, attempts: [attempt], opened: 1, echoed: 1 };
+    expect(validateReport({ ...r, tests: { ...t, 'N-WS-OPEN': ws } }).errors).toEqual([]);
+    expect(validateReport({ ...r, tests: { ...t, 'N-WS-OPEN': { ...ws, attempts: [{ ...attempt, bilhete: 'ab'.repeat(16) }] } } }).ok).toBe(false);
+    expect(validateReport({ ...r, tests: { ...t, 'N-HTTP': { ...t['N-HTTP'], url: 'https://sonda.kingszin.com.br/net/health' } } }).ok).toBe(false);
+    expect(validateReport({ ...r, tests: { ...t, 'N-PATH': { ...t['N-PATH'], client_ip: '203.0.113.9' } } }).ok).toBe(false);
+    expect(validateReport({ ...r, tests: { ...t, 'N-WS-OPEN': { ...ws, attempts: Array(6).fill(attempt) } } }).ok).toBe(false);
   });
   it('rejeita campo extra em qualquer nível (ex.: alguém tentar incluir user_id ou URL)', () => {
     const r = buildReport(input()) as unknown as Record<string, Record<string, unknown>>;
