@@ -39,8 +39,8 @@ export const DEFAULT_LIMITS: Limits = {
   idleMs: 60_000,
 };
 
-export type Kind = 'echo';
-export const KINDS: readonly string[] = ['echo']; // 'relay' entra na F3c
+export type Kind = 'echo' | 'relay';
+export const KINDS: readonly string[] = ['echo', 'relay']; // 'relay': F3c (salas de 2 aparelhos)
 
 export const utcDay = (t: number) => new Date(t).toISOString().slice(0, 10);
 
@@ -109,15 +109,18 @@ export class Budget {
   }
 
   // Resgate de uso único. O prazo da sessão nunca passa do fim da janela.
-  redeem(ticket: string, windowUntil: number, now: number): Session | null {
+  // Com `kind`, o bilhete só vale na rota do mesmo tipo (um bilhete de eco não abre o relay, e vice-versa);
+  // um bilhete na rota errada é recusado SEM ser gasto.
+  redeem(ticket: string, windowUntil: number, now: number, kind?: Kind): Session | null {
     if (!/^[0-9a-f]{32}$/.test(ticket)) return null;
     return this.db.tx(() => {
       const r = this.db.raw
-        .prepare('SELECT id, duration_ms, reserved_msgs, ticket_expires_at, redeemed_at, ended_at FROM sessions WHERE ticket = ?')
+        .prepare('SELECT id, kind, duration_ms, reserved_msgs, ticket_expires_at, redeemed_at, ended_at FROM sessions WHERE ticket = ?')
         .get(ticket) as unknown as
-        | { id: string; duration_ms: number; reserved_msgs: number; ticket_expires_at: number; redeemed_at: number | null; ended_at: number | null }
+        | { id: string; kind: string; duration_ms: number; reserved_msgs: number; ticket_expires_at: number; redeemed_at: number | null; ended_at: number | null }
         | undefined;
       if (!r || r.redeemed_at !== null || r.ended_at !== null || r.ticket_expires_at <= now) return null;
+      if (kind !== undefined && r.kind !== kind) return null;
       const deadline = Math.min(windowUntil, now + r.duration_ms);
       const changed = this.db.raw
         .prepare('UPDATE sessions SET redeemed_at = ?, deadline = ? WHERE id = ? AND redeemed_at IS NULL')

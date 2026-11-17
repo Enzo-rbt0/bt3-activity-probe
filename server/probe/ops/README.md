@@ -67,7 +67,8 @@ sudo bt3probe-janela status
 | | rede fechada ou servidor encerrando | HTTP 503 |
 | | limite de sessões, de admissões ou de orçamento do dia | HTTP 429 |
 | | erro do banco | HTTP 503 (fail-closed) |
-| Upgrade `/net/ws/echo` (antes do WebSocket existir) | Origin fora da lista; bilhete inválido, vencido ou já usado | HTTP 403 |
+| Upgrade `/net/ws/echo` ou `/net/ws/relay` (antes do WebSocket existir) | Origin fora da lista; bilhete inválido, vencido, já usado ou de outro tipo (bilhete `echo` na rota de relay, ou o contrário; **não** é gasto) | HTTP 403 |
+| | outra rota | HTTP 404 |
 | | rede fechada, servidor encerrando ou erro do banco | HTTP 503 |
 | Conexão já estabelecida | prazo da sessão, fim da janela, 60 s de inatividade | close **4001** |
 | | mensagem > 64 B, rajada > 360 ou taxa média > 120/s, cota da sessão esgotada | close **4002** |
@@ -75,6 +76,26 @@ sudo bt3probe-janela status
 | | SIGTERM (`systemctl stop`/deploy) | close 1001 |
 
 Os códigos 4001 e 4002 só existem depois do upgrade. Antes dele, a recusa é sempre HTTP.
+
+### Salas de relay (F3c, servidor 0.4.0)
+
+- Cada aparelho pede o **próprio** bilhete (`POST /net/session` com `"kind":"relay"`) e conecta em `/net/ws/relay`. Os limites (64 B, taxa, rajada, cota, prazo, janela) valem **por aparelho**.
+- O código da sala só junta duas sessões já admitidas. **Não é identidade nem credencial**: 6 símbolos, vale 2 min se ninguém entrar, no máximo 2 aparelhos, e **nunca** vai para o log, o health ou o relatório.
+- As salas ficam só na memória do processo (um reinício desfaz todas). Nenhum SQLite por mensagem.
+
+| Mensagem (texto JSON) | Resposta |
+|---|---|
+| `{"t":"criar"}` | `{"t":"sala","codigo":"K7Q4MD"}` |
+| `{"t":"entrar","codigo":"K7Q-4MD"}` (aceita minúsculas, hífen e espaço) | `{"t":"par"}` para os dois |
+| `{"t":"ping","n":3}` | `{"t":"pong","n":3}` (RTT até o servidor; também mantém a conexão viva) |
+| `{"t":"pronto","rtt":185}` | quando os dois estão prontos: `{"t":"comecar","rtt_outro":190}` para cada um |
+| — | `{"t":"saiu"}` quando o outro sai (a sala acaba) |
+| inválida | `{"t":"erro","motivo":"..."}`; a conexão continua |
+
+- Erros possíveis: `código inválido ou vencido`, `sala cheia`, `já está numa sala`, `sala sem par`, `sala venceu sem o segundo aparelho`, `ping inválido`, `mensagem inválida`.
+- **Mais de 5 tentativas de código** na mesma conexão → close **4002** `tentativas demais`.
+- Quadros **binários** só passam depois do `comecar`, e só para o **outro** aparelho, sem mudança. Antes disso são descartados (mas contam nos limites).
+- Log: `sala_criada`, `sala_completa`, `sala_largada`, `sala_encerrada` (antes/depois da largada) e `sala_expirada`, todos **sem o código**.
 
 ### Origin não é autenticação
 
