@@ -6,7 +6,7 @@ Projeto independente. Não contém nem usa nenhum código, executável, dado ou 
 
 ## Estado
 
-F1 e F2a concluídas (conexão com o Discord, WebGL 2, WebAssembly, JSPI/Asyncify, IndexedDB). Fase atual **F2b**: teclado, controle, toque, tela cheia, áudio e arquivos (inclusive maior que 2 GiB). Planos: [`docs/f2-plano.md`](docs/f2-plano.md), [`docs/f2b-plano.md`](docs/f2b-plano.md). Roteiros: [`docs/f1-roteiro.md`](docs/f1-roteiro.md), [`docs/f2a-roteiro.md`](docs/f2a-roteiro.md), [`docs/f2b-roteiro.md`](docs/f2b-roteiro.md).
+F1, F2a e F2b concluídas (Discord, WebGL 2, WebAssembly, JSPI/Asyncify, IndexedDB, teclado, controle, toque, tela cheia, áudio e arquivos). F3-0 concluída (servidor local em `server/probe`). Fase atual **F3a**: conectividade da Activity com o servidor da sonda (N-HTTP, N-PATH, N-WS-OPEN); roteiro em [`docs/f3a-roteiro.md`](docs/f3a-roteiro.md). Planos: [`docs/f2-plano.md`](docs/f2-plano.md), [`docs/f2b-plano.md`](docs/f2b-plano.md). Roteiros: [`docs/f1-roteiro.md`](docs/f1-roteiro.md), [`docs/f2a-roteiro.md`](docs/f2a-roteiro.md), [`docs/f2b-roteiro.md`](docs/f2b-roteiro.md).
 
 Publicação: GitHub Pages, automática a cada merge na `main` → https://enzo-rbt0.github.io/bt3-activity-probe/
 

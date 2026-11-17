@@ -10,6 +10,7 @@ import { runGl2 } from './tests/a-gl2';
 import { PersistTest, runIdbReadWrite } from './tests/a-idb';
 import { LayoutWatcher, VisWatcher } from './tests/a-layout';
 import { mountInteractive } from './ui-interactive';
+import { mountNet } from './ui-net';
 import { CspCollector, fromB64, runBench, runWasmEmbed, runWasmFeat, runWasmUrl } from './tests/a-wasm';
 
 // Começa a ouvir bloqueios de CSP antes de qualquer teste.
@@ -63,6 +64,9 @@ const LABELS: Record<keyof Tests, string> = {
   'A-AUDIO': 'A-AUDIO · áudio',
   'A-FILE-BASIC': 'A-FILE-BASIC · arquivo comum',
   'A-FILE-LARGE': 'A-FILE-LARGE · arquivo > 2 GiB',
+  'N-HTTP': 'N-HTTP · servidor responde',
+  'N-PATH': 'N-PATH · caminho pelo Discord',
+  'N-WS-OPEN': 'N-WS-OPEN · conexões WebSocket',
 };
 const GROUPS: [string, (keyof Tests)[]][] = [
   ['Ambiente e gráfico', ['A-ENV', 'A-GL2']],
@@ -71,6 +75,7 @@ const GROUPS: [string, (keyof Tests)[]][] = [
   ['Armazenamento', ['A-IDB', 'A-IDB-PERSIST']],
   ['Tela', ['A-LAYOUT', 'A-VIS']],
   ['Interação (F2b)', ['A-KEY', 'A-PAD', 'A-TOUCH', 'A-FS', 'A-AUDIO', 'A-FILE-BASIC', 'A-FILE-LARGE']],
+  ['Rede (F3a)', ['N-HTTP', 'N-PATH', 'N-WS-OPEN']],
 ];
 
 function renderTable(tests: Tests): void {
@@ -141,6 +146,7 @@ async function main(): Promise<void> {
   const layout = new LayoutWatcher(window, () => refresh());
   const vis = new VisWatcher(window, () => refresh());
   const interactive = mountInteractive($('interactive'), () => refresh());
+  const net = mountNet($('net'), hints.mode, () => refresh());
 
   const gl2 = runGl2();
 
@@ -202,6 +208,7 @@ async function main(): Promise<void> {
       'A-VIS': vis.result(),
       'I-BENCH': bench,
       ...interactive(),
+      ...net(),
     };
     current = buildReport({
       version: __PROBE_VERSION__,
@@ -223,7 +230,7 @@ async function main(): Promise<void> {
     persistUi();
     const v = validateReport(current);
     area.value = JSON.stringify(current, null, 2);
-    validEl.textContent = v.ok ? 'Relatório válido (schema bt3probe.report/4).' : `Relatório inválido: ${v.errors.join('; ')}`;
+    validEl.textContent = v.ok ? 'Relatório válido (schema bt3probe.report/5).' : `Relatório inválido: ${v.errors.join('; ')}`;
     validEl.className = `valid ${v.ok ? 'ok' : 'bad'}`;
     document.body.dataset.reportValid = String(v.ok);
   };
