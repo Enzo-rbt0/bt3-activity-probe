@@ -85,7 +85,7 @@ export interface WsLike {
   binaryType?: string;
   send(data: string | ArrayBuffer): void;
   close(code?: number, reason?: string): void;
-  addEventListener(type: 'open' | 'message' | 'error' | 'close', fn: (ev: { data?: unknown; code?: number }) => void): void;
+  addEventListener(type: 'open' | 'message' | 'error' | 'close', fn: (ev: { data?: unknown; code?: number; reason?: string }) => void): void;
 }
 export type WsCtor = new (url: string) => WsLike;
 export interface NetDeps { fetch: FetchLike; now: () => number; timeoutMs?: number }

@@ -141,11 +141,11 @@ export interface EchoDeps extends NetDeps {
 }
 
 type Opened = { ok: true; ws: WsLike; events: Events } | { ok: false; stage: EchoStage; status: number | null; error: string };
-type Ev = { kind: 'open' | 'message' | 'close' | 'error'; data?: unknown; code?: number };
+type Ev = { kind: 'open' | 'message' | 'close' | 'error'; data?: unknown; code?: number; reason?: string };
 // Fila de eventos do WebSocket: cada fase (abertura, envio, fechamento) assume a escuta com on();
 // entre as fases (off), os eventos ficam guardados e são entregues à fase seguinte, sem perder nada.
 type Events = { on(fn: (e: Ev) => void): void; off(): void };
-type PumpEnd = { kind: 'done' } | { kind: 'stopped' } | { kind: 'closed'; code: number | null };
+type PumpEnd = { kind: 'done' } | { kind: 'stopped' } | { kind: 'closed'; code: number | null; reason: string; silentMs: number };
 
 export class EchoTest {
   private c: EchoConfig;
@@ -322,7 +322,7 @@ export class EchoTest {
         disconnectedAt = this.deps.now();
         if (end.code === 4002) {
           this.conn.failed_stage = 'limite';
-          this.conn.error = 'o servidor fechou por limite (4002): taxa, tamanho ou cota';
+          this.conn.error = limitError(end.reason, end.silentMs);
           break;
         }
         this.conn.failed_stage = 'conexao';
@@ -391,7 +391,9 @@ export class EchoTest {
     ws.addEventListener('open', () => emit({ kind: 'open' }));
     ws.addEventListener('message', (ev) => emit({ kind: 'message', data: ev.data }));
     ws.addEventListener('error', () => emit({ kind: 'error' }));
-    ws.addEventListener('close', (ev) => emit({ kind: 'close', code: typeof ev.code === 'number' ? ev.code : undefined }));
+    ws.addEventListener('close', (ev) =>
+      emit({ kind: 'close', code: typeof ev.code === 'number' ? ev.code : undefined, reason: typeof ev.reason === 'string' ? ev.reason.slice(0, 60) : '' }),
+    );
     const events: Events = {
       on(fn) {
         listener = fn;
@@ -449,7 +451,11 @@ export class EchoTest {
       this.stopWake = () => end({ kind: 'stopped' });
       events.on((e) => {
         if (e.kind === 'message') this.onEcho(e.data);
-        else if (e.kind === 'close') end({ kind: 'closed', code: e.code ?? null });
+        else if (e.kind === 'close') {
+          // Quanto tempo sem receber nada antes da queda (engasgo de rede, se for longo).
+          const silentMs = this.deps.now() - (this.lastRecvAt ?? this.sendStart ?? this.deps.now());
+          end({ kind: 'closed', code: e.code ?? null, reason: e.reason ?? '', silentMs });
+        }
       });
       const tick = () => {
         timer = null;
@@ -470,7 +476,7 @@ export class EchoTest {
         try {
           ws.send(encodeMsg(seq, now));
         } catch {
-          return end({ kind: 'closed', code: null });
+          return end({ kind: 'closed', code: null, reason: '', silentMs: 0 });
         }
         this.pending.set(seq, now);
         if (measured) {
@@ -640,7 +646,37 @@ export class EchoTest {
     if (c.hidden_during) return { status: 'INV', detail: `Página escondida aos ${Math.round((c.hidden_at_ms ?? 0) / 1000)} s (segundo plano é da F3d). ${summary}.` };
     if (ratio === null || ratio < 0.95) return { status: 'RP', detail: `Eco abaixo de 95%. ${summary}.` };
     if (c.reconnects > 0) return { status: 'INV', detail: `Completou com ${c.reconnects} reconexão(ões). ${summary}.` };
-    if (ratio < 0.99) return { status: 'INV', detail: `Eco entre 95% e 99%. ${summary}.` };
-    return { status: 'AP', detail: `${summary}.` };
+    const jog = playability(b);
+    const tail = jog ? ` Jogável (proposta v1): ${jog}.` : '';
+    if (ratio < 0.99) return { status: 'INV', detail: `Eco entre 95% e 99%. ${summary}.${tail}` };
+    return { status: 'AP', detail: `${summary}.${tail}` };
   }
+}
+
+// Motivo do 4002, pelo texto que o servidor manda no fechamento. Um 4002 por taxa logo depois de um
+// longo silêncio é quase sempre rajada de mensagens represadas por um engasgo de rede (achado da F3b),
+// não abuso.
+export function limitError(reason: string, silentMs: number): string {
+  if (reason === 'taxa acima do limite') {
+    return silentMs >= 1000
+      ? `o servidor fechou por taxa (4002) logo depois de ${(silentMs / 1000).toFixed(1).replace('.', ',')} s sem resposta: provável rajada de mensagens represadas por um engasgo de rede`
+      : 'o servidor fechou por taxa (4002): chegaram mensagens rápido demais';
+  }
+  if (reason === 'cota da sessão esgotada') return 'o servidor fechou por cota (4002): a sessão usou todas as mensagens reservadas';
+  if (reason === 'mensagem grande demais') return 'o servidor fechou por tamanho (4002): mensagem acima do limite';
+  return 'o servidor fechou por limite (4002): taxa, tamanho ou cota';
+}
+
+// "Dá para jogar?" — PROPOSTA v1, separada do AP (o AP só diz que a conexão aguentou). Só para medições
+// completas, com a página visível e eco ≥ 99%. Limites a revisar na F3f:
+//   boa       · p99 ≤ 250 ms e nenhuma resposta acima de 1 s
+//   limítrofe · p99 ≤ 500 ms e no máximo 3 respostas acima de 1 s (~0,1% de 3.600)
+//   ruim      · o resto
+export const PLAY_V1 = { boaP99: 250, limP99: 500, limOver1s: 3 } as const;
+export function playability(b: { rtt: { p99: number | null }; delays: { over_1s: number } }): 'boa' | 'limítrofe' | 'ruim' | null {
+  const p99 = b.rtt.p99;
+  if (p99 === null) return null;
+  if (p99 <= PLAY_V1.boaP99 && b.delays.over_1s === 0) return 'boa';
+  if (p99 <= PLAY_V1.limP99 && b.delays.over_1s <= PLAY_V1.limOver1s) return 'limítrofe';
+  return 'ruim';
 }
