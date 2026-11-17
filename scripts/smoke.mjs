@@ -1,5 +1,5 @@
 // Teste de fumaça: abre a build pronta (apps/probe/dist) num Chromium sem tela e confere que a sonda
-// termina e produz um relatório válido (formato 6). Cenários:
+// termina e produz um relatório válido (formato 7). Cenários:
 //   1. standalone: WebAssembly, JSPI/Asyncify, IndexedDB e o save entre sessões (grava, recarrega,
 //      encontra) funcionando fora do Discord;
 //   2. URL com parâmetros do Discord falsos e sem Discord por trás: A-ENV = RP depois de 10 s;
@@ -12,6 +12,8 @@
 //   6. Eco contínuo (F3b): confirmação em dois passos, ~4 s a 60 Hz e "Parar" (INV, parado pela
 //      pessoa), contra o mesmo servidor simulado. Os 62 s completos são testados com relógio falso
 //      nos testes unitários e contra o servidor real em 127.0.0.1 nos testes de contrato.
+//   7. Relay (F3c): DOIS navegadores. Um cria a sala, o outro digita o código, os dois medem ~5 s e o
+//      primeiro aperta "Parar" (INV parado; o outro INV "o outro saiu"), com salas simuladas.
 // Em TODOS os cenários o endereço do servidor real (sonda.kingszin.com.br) é interceptado: a CI nunca
 // fala com a VM, nem gasta admissões dela.
 // Fora do Discord isso prova que o CÓDIGO funciona; não prova nada sobre o Discord.
@@ -25,7 +27,7 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { create as createLarge } from './criar-arquivo-teste.mjs';
-import validate from '../packages/report-schema/generated/validate-report-v6.mjs';
+import validate from '../packages/report-schema/generated/validate-report-v7.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const dist = join(root, 'apps/probe/dist');
@@ -103,7 +105,62 @@ const emcc = REQUIRE_EMCC ? ['AP'] : ['AP', 'SKIP'];
 // conta o que recebeu. Qualquer outra coisa para o host real vira 404: nada sai para a internet.
 const SONDA = 'https://sonda.kingszin.com.br';
 const TICKET = 'fedcba9876543210fedcba9876543210';
-async function fakeServer(ctx, { open }) {
+// Salas de relay simuladas (como o servidor 0.4.0): criar, entrar, ping, pronto → comecar, repasse
+// binário só para o outro e "saiu" quando alguém fecha. Uma instância é compartilhada pelos dois navegadores.
+function relayHub() {
+  const st = { rooms: new Map(), frames: 0, texts: [] };
+  const say = (ws, m) => {
+    try {
+      ws.send(JSON.stringify(m));
+    } catch {}
+  };
+  const attach = (ws) => {
+    let room = null;
+    ws.onMessage((m) => {
+      if (typeof m === 'string') {
+        st.texts.push(m);
+        const msg = JSON.parse(m);
+        if (msg.t === 'ping') return say(ws, { t: 'pong', n: msg.n });
+        if (msg.t === 'criar') {
+          room = { code: 'K7Q4MD', members: [ws], ready: new Map(), started: false };
+          st.rooms.set(room.code, room);
+          return say(ws, { t: 'sala', codigo: room.code });
+        }
+        if (msg.t === 'entrar') {
+          const r = st.rooms.get(msg.codigo);
+          if (!r || r.members.length >= 2) return say(ws, { t: 'erro', motivo: 'código inválido ou vencido' });
+          room = r;
+          r.members.push(ws);
+          for (const x of r.members) say(x, { t: 'par' });
+          return;
+        }
+        if (msg.t === 'pronto' && room && !room.started) {
+          room.ready.set(ws, msg.rtt ?? null);
+          if (room.ready.size === 2) {
+            room.started = true;
+            const [a, b] = room.members;
+            say(a, { t: 'comecar', rtt_outro: room.ready.get(b) ?? null });
+            say(b, { t: 'comecar', rtt_outro: room.ready.get(a) ?? null });
+          }
+        }
+        return;
+      }
+      if (!room?.started) return;
+      st.frames++;
+      for (const x of room.members) if (x !== ws) try { x.send(m); } catch {}
+    });
+    ws.onClose(() => {
+      if (!room) return;
+      for (const x of room.members) if (x !== ws) say(x, { t: 'saiu' });
+      st.rooms.delete(room.code);
+      room.members = [];
+      room = null;
+    });
+  };
+  return { st, attach };
+}
+
+async function fakeServer(ctx, { open, hub = null }) {
   const seen = { health: 0, session: 0, ws: 0, bodies: [] };
   const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type', 'access-control-allow-methods': 'GET, POST' };
   await ctx.route(`${SONDA}/**`, async (route) => {
@@ -125,6 +182,7 @@ async function fakeServer(ctx, { open }) {
   await ctx.routeWebSocket(/^wss:\/\/sonda\.kingszin\.com\.br\//, (ws) => {
     seen.ws++;
     if (!open || !ws.url().includes(`bilhete=${TICKET}`)) return ws.close({ code: 1008, reason: 'recusado' });
+    if (ws.url().includes('/net/ws/relay')) return hub ? hub.attach(ws) : ws.close({ code: 1008, reason: 'sem salas' });
     ws.onMessage((m) => ws.send(Buffer.from(m))); // como o servidor real: eco em binário
   });
   return seen;
@@ -341,6 +399,65 @@ try {
     if (errors.length) fail(`eco: erros na página: ${errors.join(' | ')}`);
     console.log(`   eco: ${e.sent} enviados (+${e.warmup.sent} aquecimento), RTT p50 ${e.rtt.p50} ms, ${e.cadence.rate_hz} msg/s`);
     await ctx.close();
+  }
+  // Cenário 7: relay (F3c) entre DOIS navegadores com salas simuladas: cria, entra pelo código, mede
+  // ~5 s e o criador aperta "Parar".
+  {
+    const hub = relayHub();
+    const errors = [];
+    const sides = [];
+    for (const name of ['A', 'B']) {
+      const ctx = await browser.newContext();
+      const seen = await fakeServer(ctx, { open: true, hub });
+      const page = await ctx.newPage();
+      page.on('pageerror', (e) => errors.push(`${name}: ${e}`));
+      await openProbe(page, '', 20_000);
+      await waitNet(page, 'N-HTTP');
+      await page.fill('#relay-pair', 'PC-PC-1');
+      sides.push({ ctx, seen, page });
+    }
+    const [A, B] = sides;
+    if (A.seen.session !== 0 || B.seen.session !== 0) fail('relay: admissão pedida antes de apertar o botão');
+    await A.page.click('#relay-create');
+    await A.page.waitForSelector('#relay-code:not([hidden])', { timeout: 15_000 });
+    const code = (await A.page.textContent('#relay-code')).trim();
+    if (code !== 'K7Q-4MD') fail(`relay: código mostrado "${code}"`);
+    await B.page.fill('#relay-code-in', code.toLowerCase());
+    await B.page.click('#relay-join');
+    await A.page.waitForFunction(() => document.querySelector('#live-RELAY').textContent.startsWith('Medindo… 5'), undefined, { timeout: 40_000 });
+    await A.page.click('#relay-stop');
+    const done = (page) =>
+      page.waitForFunction(() => {
+        const t = JSON.parse(document.querySelector('#json').value).tests['N-RELAY'];
+        return t.ran && t.status !== 'SKIP';
+      }, undefined, { timeout: 20_000 });
+    await Promise.all([done(A.page), done(B.page)]);
+    const ra = JSON.parse(await A.page.inputValue('#json'));
+    const rb = JSON.parse(await B.page.inputValue('#json'));
+    check('relay-A', ra, { 'N-HTTP': ['AP'], 'N-RELAY': ['INV'] });
+    check('relay-B', rb, { 'N-HTTP': ['AP'], 'N-RELAY': ['INV'] });
+    const a = ra.tests['N-RELAY'];
+    const b = rb.tests['N-RELAY'];
+    if (!a.connection.stopped_by_user || a.role !== 'criou') fail(`relay: A não registrou a parada (${a.detail})`);
+    if (!b.connection.peer_left || b.role !== 'entrou') fail(`relay: B não registrou que A saiu (${b.detail})`);
+    if (a.pair_label !== 'PC-PC-1' || a.route !== 'absoluto') fail(`relay: rótulo/rota errados (${a.pair_label}, ${a.route})`);
+    for (const [n, x] of [['A', a], ['B', b]]) {
+      if (x.warmup.received < 100 || x.received < 60) fail(`relay ${n}: recebeu ${x.warmup.received} + ${x.received} quadros do outro`);
+      if (x.rtt_before.answered !== 20 || x.rtt_self_ms === null || x.rtt_peer_ms === null) fail(`relay ${n}: pings/RTT faltando`);
+      if (x.unexpected !== 0 || x.lateness.p50 === null) fail(`relay ${n}: inesperados ${x.unexpected}, atraso ${x.lateness.p50}`);
+    }
+    for (const s of [A, B]) {
+      if (s.seen.session !== 1 || s.seen.ws !== 1) fail(`relay: servidor viu ${s.seen.session} admissões e ${s.seen.ws} WebSockets num lado`);
+      if (s.seen.bodies[0] !== '{"kind":"relay","duration_s":180}') fail(`relay: corpo de admissão inesperado ${s.seen.bodies[0]}`);
+    }
+    for (const r of [ra, rb]) {
+      const j = JSON.stringify(r);
+      if (j.includes('K7Q4MD') || j.includes('K7Q-4MD')) fail('relay: o código da sala foi para o relatório');
+      if (j.includes(TICKET)) fail('relay: bilhete foi para o relatório');
+    }
+    if (errors.length) fail(`relay: erros na página: ${errors.join(' | ')}`);
+    console.log(`   relay: ${hub.st.frames} quadros repassados; A recebeu ${a.warmup.received}+${a.received}, B ${b.warmup.received}+${b.received}; atraso p50 ${a.lateness.p50}/${b.lateness.p50} ms`);
+    for (const s of sides) await s.ctx.close();
   }
 } catch (e) {
   fail(String(e?.stack ?? e));

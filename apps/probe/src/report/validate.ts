@@ -4,16 +4,18 @@ import validateV3 from '../../../../packages/report-schema/generated/validate-re
 import validateV4 from '../../../../packages/report-schema/generated/validate-report-v4.mjs';
 import validateV5 from '../../../../packages/report-schema/generated/validate-report-v5.mjs';
 import validateV6 from '../../../../packages/report-schema/generated/validate-report-v6.mjs';
+import validateV7 from '../../../../packages/report-schema/generated/validate-report-v7.mjs';
 
 export interface ValidationResult { ok: boolean; errors: string[] }
 
 const BY_SCHEMA = {
   'bt3probe.report/1': validateV1, 'bt3probe.report/2': validateV2, 'bt3probe.report/3': validateV3,
   'bt3probe.report/4': validateV4, 'bt3probe.report/5': validateV5, 'bt3probe.report/6': validateV6,
+  'bt3probe.report/7': validateV7,
 } as const;
 
 // Usa os validadores pré-compilados (sem eval), seguros sob a Content Security Policy do Discord.
-// Escolhe a versão pelo campo "schema": relatórios antigos (formatos 1 a 5) continuam verificáveis.
+// Escolhe a versão pelo campo "schema": relatórios antigos (formatos 1 a 6) continuam verificáveis.
 export function validateReport(data: unknown): ValidationResult {
   const schema = (data as { schema?: unknown } | null)?.schema;
   const v = typeof schema === 'string' ? BY_SCHEMA[schema as keyof typeof BY_SCHEMA] : undefined;

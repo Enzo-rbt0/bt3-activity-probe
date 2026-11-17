@@ -1,6 +1,6 @@
 {
   "name": "bt3-activity-probe",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "private": true,
   "description": "Activity de diagnóstico do Discord (Experimento A). Sem nenhum código ou recurso de BT3.",
   "type": "module",

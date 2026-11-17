@@ -1,7 +1,8 @@
-// Espelho em TypeScript de packages/report-schema/schema/report.v6.json. O schema é a fonte da verdade:
+// Espelho em TypeScript de packages/report-schema/schema/report.v7.json. O schema é a fonte da verdade:
 // os testes validam relatórios montados com estes tipos contra o validador gerado a partir dele.
 
 import type { NetEchoResult } from '../tests/c-echo';
+import type { NetRelayResult } from '../tests/c-relay';
 import type { NetHttpResult, NetPathResult, NetWsOpenResult } from '../tests/c-net';
 
 export type Status = 'AP' | 'RP' | 'INV' | 'SKIP' | 'ERRO';
@@ -230,10 +231,11 @@ export interface Tests {
   'N-PATH': NetPathResult;
   'N-WS-OPEN': NetWsOpenResult;
   'N-ECHO': NetEchoResult;
+  'N-RELAY': NetRelayResult;
 }
 
 export interface Report {
-  schema: 'bt3probe.report/6';
+  schema: 'bt3probe.report/7';
   probe: { version: string; git_sha: string; built_at: string; sdk_version: string | null };
   run: { id: string; started_at: string; duration_ms: number; tz_offset_min: number };
   context: ContextInfo;
