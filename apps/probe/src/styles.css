@@ -102,3 +102,8 @@ tr.group td { font-weight: 700; color: var(--muted); font-size: 0.8rem; text-tra
 button.small { padding: 6px 10px; }
 .icard:focus { outline: 2px solid var(--accent); }
 @media (max-width: 520px) { .q { flex-basis: 100%; flex-wrap: wrap; } .q button { flex: 1 1 40%; } }
+/* F3c: código da sala em destaque (só na tela; nunca vai para o relatório) */
+.room-code { font: 700 2rem/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.12em; text-align: center; margin: 8px 0; padding: 8px; border: 2px dashed var(--accent); border-radius: 10px; color: var(--accent); }
+.join { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 6px 0; }
+.join input { font: 600 1.1rem ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-transform: uppercase; letter-spacing: 0.1em; width: 12ch; padding: 8px; }
+.pair input, .join input { max-width: 100%; }

@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { probeHealth, WsOpenTest, type FetchLike, type WsCtor, type WsLike } from '../../../apps/probe/src/tests/c-net';
 import { EchoTest } from '../../../apps/probe/src/tests/c-echo';
+import { CODE_ALPHABET as PAGE_ALPHABET, CODE_LEN as PAGE_LEN, RelayTest } from '../../../apps/probe/src/tests/c-relay';
+import { CODE_ALPHABET, CODE_LEN } from '../src/relay.js';
 import { harness, ORIGIN, type Harness } from './helpers.js';
 
 let h: Harness | null = null;
@@ -192,6 +194,53 @@ describe('contrato N-ECHO (F3b) × servidor real', () => {
       stopClock();
     }
   });
+
+  it('F3c: dois clientes da página numa sala real — código, pings, largada, 1,5 s de quadros nos dois sentidos; AP dos dois', async () => {
+    expect([PAGE_ALPHABET, PAGE_LEN]).toEqual([CODE_ALPHABET, CODE_LEN]);
+    h = await harness();
+    const stopClock = followRealTime(h);
+    try {
+      const cfg = { warmupMs: 300, measureMs: 1500, sessionS: 30, pings: 3, pingGapMs: 10, needAfterPairMs: 10_000, roomWaitMs: 20_000, graceMs: 500 };
+      const mk = () => new RelayTest({ fetch: fetchWithOrigin(ORIGIN), now: () => performance.now(), timeoutMs: 3000, WebSocket: wsWithOrigin(ORIGIN) }, cfg);
+      const a = mk();
+      const b = mk();
+      const bases = { httpBase: `http://127.0.0.1:${h.port}`, wsBase: `ws://127.0.0.1:${h.port}` };
+      const pa = a.run(bases, 'relativo', { create: true });
+      let code: string | null = null;
+      for (let i = 0; i < 200 && !code; i++) {
+        await new Promise((res) => setTimeout(res, 10));
+        code = a.progress().code;
+      }
+      expect(code).toMatch(/^[2-9A-HJ-NP-Z]{3}-[2-9A-HJ-NP-Z]{3}$/);
+      const pb = b.run(bases, 'relativo', { join: code!.toLowerCase() });
+      await Promise.all([pa, pb]);
+      const ra = a.result();
+      const rb = b.result();
+      for (const r of [ra, rb]) {
+        expect(r.status, r.detail).toBe('AP');
+        expect(r.connection).toMatchObject({ admit_status: 201, completed: true, peer_left: false, failed_stage: null });
+        expect(r.expected).toBe(90);
+        expect(r.received).toBe(90);
+        expect(r.unexpected).toBe(0);
+        expect(r.rtt_before.answered).toBe(3);
+        expect(r.rtt_after.answered).toBe(3);
+        expect(r.lateness.p50).not.toBeNull();
+        expect(r.lateness.p99!).toBeLessThan(100); // local: os dois começam quase juntos
+        const j = JSON.stringify(r);
+        expect(j).not.toContain(code!.replace('-', ''));
+        expect(j).not.toMatch(/[0-9a-f]{32}/);
+      }
+      await new Promise((res) => setTimeout(res, 100));
+      expect(h.server.rooms.active).toBe(0);
+      const rows = h.db.raw.prepare("SELECT kind, duration_ms, ended_at IS NOT NULL AS ended FROM sessions").all() as Record<string, unknown>[];
+      expect(rows).toEqual([{ kind: 'relay', duration_ms: 30_000, ended: 1 }, { kind: 'relay', duration_ms: 30_000, ended: 1 }]);
+      const logs = h.logs.join('\n');
+      expect(logs).not.toContain(code!.replace('-', ''));
+      expect(logs).toContain('sala_largada');
+    } finally {
+      stopClock();
+    }
+  }, 30_000);
 });
 
 // Garante que o tipo do wrapper bate com a interface usada pelo cliente.

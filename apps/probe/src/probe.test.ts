@@ -11,7 +11,9 @@ import type { Gl2Result, Tests } from './report/types';
 import { FEATURE_KEYS } from './report/types';
 import { httpResult, pathResult, runPathChecks, WsOpenTest } from './tests/c-net';
 import { EchoTest } from './tests/c-echo';
+import { RelayTest } from './tests/c-relay';
 import { echoServer, FakeClock } from './test-helpers/echo-fakes';
+import { relayPair, ROOM_CODE } from './test-helpers/relay-fakes';
 import { fakeFetch, fakeWs, HEALTH, now, PAGE, res, server, T, TICKET } from './test-helpers/net-fakes';
 
 const DISCORD_QS = '?frame_id=f1&instance_id=i-123&platform=desktop&guild_id=999&channel_id=888';
@@ -154,6 +156,8 @@ function fullTests(): Tests {
     'N-WS-OPEN': new WsOpenTest({ fetch: async () => { throw new Error('sem rede'); }, now: () => 0, WebSocket: class {} as never }).result(),
     // F3b no estado inicial.
     'N-ECHO': new EchoTest({ fetch: async () => { throw new Error('sem rede'); }, now: () => 0, WebSocket: class {} as never }).result(),
+    // F3c no estado inicial.
+    'N-RELAY': new RelayTest({ fetch: async () => { throw new Error('sem rede'); }, now: () => 0, WebSocket: class {} as never }).result(),
   };
 }
 
@@ -199,7 +203,7 @@ describe('relatório e schema', () => {
     const v = validateReport(r);
     expect(v.errors).toEqual([]);
     expect(v.ok).toBe(true);
-    expect(r.schema).toBe('bt3probe.report/6');
+    expect(r.schema).toBe('bt3probe.report/7');
     expect(r.run.duration_ms).toBe(813);
     expect(reportFileName(r)).toBe('bt3probe-discord-desktop-app-2026-11-15T12-05-00-000Z.json');
   });
@@ -236,7 +240,7 @@ describe('relatório e schema', () => {
   });
   it('relatórios da F2a (formato 2) e da F2b-0 (formato 3) continuam válidos', () => {
     const r = buildReport(input()) as unknown as Record<string, unknown> & { tests: Record<string, unknown> };
-    const { 'A-KEY': _1, 'A-PAD': _2, 'A-TOUCH': _3, 'A-FS': _4, 'A-AUDIO': _5, 'A-FILE-BASIC': _6, 'A-FILE-LARGE': _7, 'N-HTTP': _8, 'N-PATH': _9, 'N-WS-OPEN': _10, 'N-ECHO': _11, ...f2a } = r.tests;
+    const { 'A-KEY': _1, 'A-PAD': _2, 'A-TOUCH': _3, 'A-FS': _4, 'A-AUDIO': _5, 'A-FILE-BASIC': _6, 'A-FILE-LARGE': _7, 'N-HTTP': _8, 'N-PATH': _9, 'N-WS-OPEN': _10, 'N-ECHO': _11, 'N-RELAY': _12, ...f2a } = r.tests;
     const v3 = { ...r, schema: 'bt3probe.report/3', tests: f2a };
     // Formato 3 (F2b-0, publicado na 0.2.1) continua válido; o formato 4 exige os testes da F2b.
     expect(validateReport(v3).errors).toEqual([]);
@@ -259,20 +263,29 @@ describe('relatório e schema', () => {
   });
   it('relatório da F2b (formato 4) continua válido; o formato 5 exige os testes de rede', () => {
     const r = buildReport(input()) as unknown as Record<string, unknown> & { tests: Record<string, unknown> };
-    const { 'N-HTTP': _1, 'N-PATH': _2, 'N-WS-OPEN': _3, 'N-ECHO': _4, ...f2b } = r.tests;
+    const { 'N-HTTP': _1, 'N-PATH': _2, 'N-WS-OPEN': _3, 'N-ECHO': _4, 'N-RELAY': _5, ...f2b } = r.tests;
     const v4 = { ...r, schema: 'bt3probe.report/4', tests: f2b };
     expect(validateReport(v4).errors).toEqual([]);
     expect(validateReport({ ...v4, schema: 'bt3probe.report/5' }).ok).toBe(false);
   });
   it('relatório da F3a (formato 5) continua válido; o formato 6 exige o N-ECHO', () => {
     const r = buildReport(input()) as unknown as Record<string, unknown> & { tests: Record<string, unknown> };
-    const { 'N-ECHO': _1, ...f3a } = r.tests;
+    const { 'N-ECHO': _1, 'N-RELAY': _2, ...f3a } = r.tests;
     const v5 = { ...r, schema: 'bt3probe.report/5', tests: f3a };
     expect(validateReport(v5).errors).toEqual([]);
     expect(validateReport({ ...v5, schema: 'bt3probe.report/6' }).ok).toBe(false);
-    expect(validateReport({ ...r, schema: 'bt3probe.report/5' }).ok).toBe(false); // v5 não conhece o N-ECHO
+    const { 'N-RELAY': _3, ...f3b } = r.tests;
+    expect(validateReport({ ...r, schema: 'bt3probe.report/5', tests: f3b }).ok).toBe(false); // v5 não conhece o N-ECHO
   });
-  it('eco contínuo: resultados reais (AP, queda e reconexão, 4002, parado) passam no schema v6 sem bilhete', async () => {
+  it('relatório da F3b (formato 6) continua válido; o formato 7 exige o N-RELAY', () => {
+    const r = buildReport(input()) as unknown as Record<string, unknown> & { tests: Record<string, unknown> };
+    const { 'N-RELAY': _1, ...f3b } = r.tests;
+    const v6 = { ...r, schema: 'bt3probe.report/6', tests: f3b };
+    expect(validateReport(v6).errors).toEqual([]);
+    expect(validateReport({ ...v6, schema: 'bt3probe.report/7' }).ok).toBe(false);
+    expect(validateReport({ ...r, schema: 'bt3probe.report/6' }).ok).toBe(false); // v6 não conhece o N-RELAY
+  });
+  it('eco contínuo: resultados reais (AP, queda e reconexão, 4002, parado) passam no schema v7 sem bilhete', async () => {
     const BASES = { httpBase: PAGE, wsBase: 'wss://x.discordsays.com' };
     const cases = [
       { latency: (seq: number) => (seq % 97 === 0 ? 1500 : 90 + (seq % 7)) },
@@ -291,6 +304,37 @@ describe('relatório e schema', () => {
       expect(JSON.stringify(r)).not.toContain(TICKET);
     }
   });
+  it('relay: resultados reais (AP, perda, queda, 4002, sem par, código errado) passam no schema v7 sem código nem bilhete', async () => {
+    const cases: Parameters<typeof relayPair>[] = [
+      [{ links: [{ up: 25, down: 25 }, { up: 70, down: 70 }], frameDelay: (f, s) => (f === 1 && s % 100 === 0 ? 300 : 0) }],
+      [{ drop: (f, s) => f === 1 && s % 25 === 0 }],
+      [{ closeAfter: [{ conn: 1, afterMs: 30_000, code: 1006 }] }],
+      [{ closeAfter: [{ conn: 0, afterMs: 30_000, code: 4002, reason: 'taxa acima do limite' }] }],
+      [{}, { joinAtMs: null, cfg: { roomWaitMs: 10_000 } }],
+      [{}, { joinCode: 'K7Q-4M0', cfg: { roomWaitMs: 10_000 } }],
+    ];
+    for (const c of cases) {
+      const { a, b } = await relayPair(...c).run();
+      for (const x of [a, b]) {
+        const r = buildReport(input({ tests: { ...fullTests(), 'N-RELAY': x } }));
+        expect(validateReport(r).errors).toEqual([]);
+        const j = JSON.stringify(r);
+        expect(j).not.toContain(TICKET);
+        expect(j).not.toContain(ROOM_CODE);
+      }
+    }
+  }, 60_000);
+  it('relay: o schema recusa o código da sala, amostras cruas e curva longa', () => {
+    const r = buildReport(input()) as unknown as Record<string, Record<string, unknown>>;
+    const t = r.tests as Record<string, Record<string, unknown>>;
+    const e = t['N-RELAY']!;
+    expect(validateReport(r).ok).toBe(true);
+    expect(validateReport({ ...r, tests: { ...t, 'N-RELAY': { ...e, codigo: ROOM_CODE } } }).ok).toBe(false);
+    expect(validateReport({ ...r, tests: { ...t, 'N-RELAY': { ...e, connection: { ...(e.connection as object), code: ROOM_CODE } } } }).ok).toBe(false);
+    expect(validateReport({ ...r, tests: { ...t, 'N-RELAY': { ...e, samples: [1, 2] } } }).ok).toBe(false);
+    expect(validateReport({ ...r, tests: { ...t, 'N-RELAY': { ...e, d_curve: Array(31).fill(0) } } }).ok).toBe(false);
+    expect(validateReport({ ...r, tests: { ...t, 'N-RELAY': { ...e, d_min_01pct: 31 } } }).ok).toBe(false);
+  });
   it('eco contínuo: o schema recusa amostras cruas, URL e campos extras', () => {
     const r = buildReport(input()) as unknown as Record<string, Record<string, unknown>>;
     const t = r.tests as Record<string, Record<string, unknown>>;
@@ -301,7 +345,7 @@ describe('relatório e schema', () => {
     expect(validateReport({ ...r, tests: { ...t, 'N-ECHO': { ...e, pair_label: 'x'.repeat(41) } } }).ok).toBe(false);
     expect(validateReport({ ...r, tests: { ...t, 'N-ECHO': { ...e, connection: { ...(e.connection as object), ticket: 'ab'.repeat(16) } } } }).ok).toBe(false);
   });
-  it('rede: resultados reais (sucesso, falhas variadas e caminhos) passam no schema v6', async () => {
+  it('rede: resultados reais (sucesso, falhas variadas e caminhos) passam no schema v7', async () => {
     const W = fakeWs(['ok', 'recusa', 'fecha-4002', 'trava', 'eco-errado']);
     const t = new WsOpenTest({ fetch: fakeFetch(server()), now, timeoutMs: T, WebSocket: W });
     await t.run({ httpBase: PAGE, wsBase: 'wss://x.discordsays.com' });
