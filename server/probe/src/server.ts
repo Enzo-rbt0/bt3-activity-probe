@@ -173,6 +173,7 @@ export class ProbeServer {
         mensagens_reservadas_por_dia: this.limits.maxReservedPerDay,
         bytes_por_mensagem: this.limits.maxMsgBytes,
         mensagens_por_segundo: this.limits.maxRatePerSec,
+        rajada_mensagens: this.limits.maxBurst,
         duracao_maxima_s: this.limits.maxDurationMs / 1000,
         inatividade_s: this.limits.idleMs / 1000,
       },

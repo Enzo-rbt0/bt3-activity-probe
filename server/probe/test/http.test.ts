@@ -42,6 +42,7 @@ describe('T3 — health', () => {
       mensagens_reservadas_por_dia: 60000,
       bytes_por_mensagem: 64,
       mensagens_por_segundo: 120,
+      rajada_mensagens: 360,
       duracao_maxima_s: 180,
       inatividade_s: 60,
     });

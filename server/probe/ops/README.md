@@ -70,7 +70,7 @@ sudo bt3probe-janela status
 | Upgrade `/net/ws/echo` (antes do WebSocket existir) | Origin fora da lista; bilhete inválido, vencido ou já usado | HTTP 403 |
 | | rede fechada, servidor encerrando ou erro do banco | HTTP 503 |
 | Conexão já estabelecida | prazo da sessão, fim da janela, 60 s de inatividade | close **4001** |
-| | mensagem > 64 B, taxa > 120/s, cota da sessão esgotada | close **4002** |
+| | mensagem > 64 B, rajada > 360 ou taxa média > 120/s, cota da sessão esgotada | close **4002** |
 | | mensagem > 1024 B (trava do `ws`) | close 1009 |
 | | SIGTERM (`systemctl stop`/deploy) | close 1001 |
 
@@ -105,7 +105,7 @@ Alguém que conheça o domínio pode gastar a cota do dia **enquanto a janela es
 - Duração máxima de 180 s.
 - Bilhete de 128 bits, de uso único, válido por 30 s.
 - 64 B por mensagem.
-- 120 mensagens por segundo.
+- 120 mensagens por segundo em média, com rajada de até 360 de uma vez (cobre um engasgo de rede de ~6 s a 60 Hz).
 - 60 s de inatividade.
 
 ### Ajuste na VM, sem mudar código (`bt3probe-limites`)
@@ -122,7 +122,8 @@ sudo bt3probe-limites padrao                          # apaga o arquivo: tudo no
 | `mensagens_dia` | mensagens reservadas por dia | 1 a 1 000 000 |
 | `admissoes_dia` | admissões por dia | 1 a 200 |
 | `conexoes_simultaneas` | sessões simultâneas | 1 a 8 |
-| `mensagens_por_segundo` | taxa por conexão | 1 a 240 |
+| `mensagens_por_segundo` | taxa média por conexão | 1 a 240 |
+| `rajada_mensagens` | rajada máxima por conexão (tamanho do balde) | 1 a 1 000 |
 | `duracao_maxima_s` | duração máxima da sessão | 1 a 600 |
 
 - O arquivo é `/etc/bt3probe/limites.json` (root, 0644). O serviço só lê, e **só ao iniciar**.

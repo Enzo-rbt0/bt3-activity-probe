@@ -47,6 +47,10 @@ const M = [
   // Conexão
   ['conn: 64 B vira >=', 'src/ws/conn.ts', 'data.length > this.limits.maxMsgBytes', 'data.length >= this.limits.maxMsgBytes'],
   ['conn: taxa < 1 vira < 0', 'src/ws/conn.ts', 'this.tokens < 1', 'this.tokens < 0'],
+  ['conn: balde volta a ser do tamanho da taxa', 'src/ws/conn.ts', 'this.tokens = Math.min(this.limits.maxBurst,', 'this.tokens = Math.min(this.limits.maxRatePerSec,'],
+  ['conn: balde começa do tamanho da taxa', 'src/ws/conn.ts', 'this.tokens = limits.maxBurst;', 'this.tokens = limits.maxRatePerSec;'],
+  ['conn: reposição usa a rajada em vez da taxa', 'src/ws/conn.ts', '((now - this.tokensAt) / 1000) * this.limits.maxRatePerSec', '((now - this.tokensAt) / 1000) * this.limits.maxBurst'],
+  ['limites: rajada sem teto absoluto', 'src/limits.ts', "rajada_mensagens: { campo: 'maxBurst', min: 1, max: 1000, escala: 1 }", "rajada_mensagens: { campo: 'maxBurst', min: 1, max: 1e9, escala: 1 }"],
   ['conn: cota > vira >=', 'src/ws/conn.ts', 'this.received > this.reserved', 'this.received >= this.reserved'],
   ['conn: sem check antes de responder', 'src/ws/conn.ts', 'if (!this.check()) return;', ''],
   ['conn: inatividade não confere', 'src/ws/conn.ts', 'if (now - this.lastMsgAt >= this.limits.idleMs)', 'if (false)'],
