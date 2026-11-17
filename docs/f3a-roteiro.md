@@ -13,19 +13,22 @@
 
    | PREFIX | TARGET |
    |---|---|
-   | `/net` | `sonda.kingszin.com.br` |
+   | `/net` | `sonda.kingszin.com.br/net` |
 
-   O TARGET vai sem `https://`.
+   O TARGET vai sem `https://` e **com `/net` no fim**.
 3. Salve. **Não altere o mapeamento `/`.**
 
-**Se o teste N-PATH der RP com 404**, o Discord está tirando o prefixo `/net` ao repassar. Nesse caso, troque o TARGET para `sonda.kingszin.com.br/net` e repita. O próprio relatório sugere isso no detalhe do N-PATH.
+**Por que `/net` no TARGET:** o proxy do Discord **remove o prefixo** ao repassar. Uma chamada a `/net/health` chega ao TARGET como `/health`. Com o TARGET só `sonda.kingszin.com.br`, o servidor recebe `/health`, que não existe, e o N-PATH dá RP com 404. Isso foi confirmado em 17/11/2026.
 
 ## 2. Abrir a janela de rede (SSH na VM)
 
 ```bash
 sudo bt3probe-janela abrir 60          # 60 minutos; fecha sozinha depois
+sleep 6                                # o servidor relê o arquivo da janela a cada 5 s
 curl -s http://127.0.0.1:8787/net/health | head -c 60; echo   # deve mostrar "aberto":true
 ```
+
+- Sem o `sleep`, o `curl` pode rodar antes da releitura e ainda mostrar `"aberto":false`. Nesse intervalo o servidor fica fechado, que é o lado seguro.
 
 - Se o serviço reiniciar, a janela **fecha** e precisa ser aberta de novo. Isso é de propósito.
 - Para fechar antes da hora: `sudo bt3probe-janela fechar`.
@@ -37,7 +40,7 @@ Em **cada um** dos ambientes abaixo:
 2. Espere a verificação automática (N-HTTP e N-PATH).
 3. No cartão **"Conexão com o servidor"**, aperte **"Testar 5 conexões"**.
 4. Preencha "Aparelho" e "Rede" no formulário.
-5. **Baixe ou copie o JSON.**
+5. **Copie o JSON** ("Copiar JSON"). **Dentro do Discord, "Baixar JSON" não funciona**, nem no app nem no navegador: o download é bloqueado.
 
 | # | Ambiente | Como abrir |
 |---|---|---|
@@ -59,7 +62,7 @@ Em **cada um** dos ambientes abaixo:
 
 Detalhes que ajudam no diagnóstico (todos no JSON):
 - `failed_stage`: onde cada tentativa parou.
-  - `admissao`: o servidor recusou a sessão. Um **403** quer dizer que o servidor não reconheceu a origem da página, o que pode acontecer se o proxy do Discord não repassar o cabeçalho `Origin`.
+  - `admissao`: o servidor recusou a sessão. Um **403** quer dizer que o servidor não reconheceu a origem da página. Em 17/11/2026 o proxy do Discord **repassou** o `Origin` da Activity, e as admissões deram 201; um 403 agora indicaria mudança no Discord ou na lista de origens.
   - `upgrade`: o WebSocket foi recusado antes de abrir. O navegador não mostra o motivo; o log do servidor mostra.
   - `eco`: abriu, mas a mensagem não voltou.
 - `open_ms` / `echo_ms`: tempos de abertura e de ida e volta.
@@ -69,8 +72,13 @@ Detalhes que ajudam no diagnóstico (todos no JSON):
 
 ```bash
 sudo bt3probe-janela fechar
-sudo journalctl -u bt3probe --since "2 hours ago" --no-pager -o cat | tail -40
+sudo journalctl -u bt3probe --since "2 hours ago" --no-pager -o cat | sort | uniq -c
 ```
+
+O segundo comando conta cada tipo de evento. Nos 5 ambientes, o esperado é:
+- **25** `admissao`;
+- **25** `sessao_encerrada` com código 1000;
+- **nenhum** `admissao_recusada` ou `upgrade_recusado`.
 
 O log não tem IP, URL nem bilhete: só eventos e códigos.
 
