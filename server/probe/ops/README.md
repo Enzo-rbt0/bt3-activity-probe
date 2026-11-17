@@ -28,6 +28,7 @@ sudo install -d -o root -g root -m 0755 /opt/bt3probe /etc/bt3probe
 cd /opt/bt3probe && sudo npm ci --omit=dev
 sudo install -m 0644 bt3probe.service /etc/systemd/system/
 sudo install -m 0755 bt3probe-janela /usr/local/sbin/
+sudo install -m 0755 bt3probe-limites /usr/local/sbin/
 sudo systemctl daemon-reload && sudo systemctl enable --now bt3probe
 ```
 
@@ -93,7 +94,9 @@ Alguém que conheça o domínio pode gastar a cota do dia **enquanto a janela es
 - o processo sai com 0 se tudo terminar bem;
 - se o encerramento falhar ou passar de 8 s, o log registra `encerramento_falhou` e o processo sai com **1** (o systemd mostra a unidade como `failed`).
 
-## 5. Tetos (padrão)
+## 5. Tetos
+
+### Padrão do código
 
 - 4 sessões simultâneas.
 - 30 admissões por dia (UTC).
@@ -104,6 +107,29 @@ Alguém que conheça o domínio pode gastar a cota do dia **enquanto a janela es
 - 64 B por mensagem.
 - 120 mensagens por segundo.
 - 60 s de inatividade.
+
+### Ajuste na VM, sem mudar código (`bt3probe-limites`)
+
+```sh
+sudo bt3probe-limites mostrar                         # arquivo atual e tetos em uso no serviço
+sudo bt3probe-limites definir mensagens_dia 300000    # muda um teto e reinicia o serviço
+sudo bt3probe-limites remover mensagens_dia           # aquele teto volta ao padrão
+sudo bt3probe-limites padrao                          # apaga o arquivo: tudo no padrão
+```
+
+| Chave | Campo | Teto absoluto |
+|---|---|---|
+| `mensagens_dia` | mensagens reservadas por dia | 1 a 1 000 000 |
+| `admissoes_dia` | admissões por dia | 1 a 200 |
+| `conexoes_simultaneas` | sessões simultâneas | 1 a 8 |
+| `mensagens_por_segundo` | taxa por conexão | 1 a 240 |
+| `duracao_maxima_s` | duração máxima da sessão | 1 a 600 |
+
+- O arquivo é `/etc/bt3probe/limites.json` (root, 0644). O serviço só lê, e **só ao iniciar**.
+- Mudar **reinicia o serviço**, e o reinício **fecha a janela** (de propósito). Para testar, rode `bt3probe-janela abrir` de novo.
+- **Fail-safe:** arquivo ilegível, JSON inválido, chave desconhecida ou valor fora do teto absoluto → o arquivo **inteiro** é ignorado e valem os padrões do código. O health mostra `tetos_origem` (`arquivo` ou `padrao`) e `tetos_aviso`; o log registra o evento `limites`.
+- O script valida com o próprio código do servidor (`/opt/bt3probe/dist/limits.js`) e recusa o valor antes de gravar.
+- Fixos no código: 64 B por mensagem, bilhete de 30 s, margem de 10%, 60 s de inatividade e a janela fechada por padrão.
 
 ## 6. O que nunca vai para log ou disco
 

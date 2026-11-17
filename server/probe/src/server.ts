@@ -6,6 +6,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { Duplex } from 'node:stream';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { Budget, DEFAULT_LIMITS, KINDS, type Kind, type Limits } from './budget.js';
+import type { LimitsSource } from './limits.js';
 import type { Clock, TimerHandle } from './clock.js';
 import { WindowWatcher } from './config.js';
 import type { Db } from './db.js';
@@ -25,6 +26,8 @@ export interface ProbeOptions {
   port?: number;
   origins?: string[];
   limits?: Limits;
+  // De onde vieram os tetos (arquivo da VM ou padrão do código); só informativo, aparece no health.
+  limitsSource?: LimitsSource;
   log?: Logger;
   readWindow?: (p: string) => string | null;
 }
@@ -173,6 +176,8 @@ export class ProbeServer {
         duracao_maxima_s: this.limits.maxDurationMs / 1000,
         inatividade_s: this.limits.idleMs / 1000,
       },
+      tetos_origem: this.o.limitsSource?.origem ?? 'padrao',
+      tetos_aviso: this.o.limitsSource?.motivo ?? null,
       uso_do_dia: uso,
     });
   }

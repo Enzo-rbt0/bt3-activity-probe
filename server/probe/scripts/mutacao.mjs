@@ -23,6 +23,14 @@ const M = [
   ['janela: sem limite de abertura no futuro', 'src/config.ts', 'if (opened > now + FUTURE_SKEW_MS)', 'if (false)'],
   ['janela: tolerância de 60 s vira < 60 s (> vira >=)', 'src/config.ts', 'if (opened > now + FUTURE_SKEW_MS)', 'if (opened >= now + FUTURE_SKEW_MS)'],
   ['janela: tolerância de 60 s vira 61 s', 'src/config.ts', 'export const FUTURE_SKEW_MS = 60 * 1000;', 'export const FUTURE_SKEW_MS = 61 * 1000;'],
+  // Tetos configuráveis (arquivo da VM) e abertura do banco
+  ['limites: teto absoluto ignorado', 'src/limits.ts', 'if (v < r.min || v > r.max)', 'if (v < r.min)'],
+  ['limites: mínimo ignorado', 'src/limits.ts', 'if (v < r.min || v > r.max)', 'if (v > r.max)'],
+  ['limites: aceita valor não inteiro', 'src/limits.ts', "typeof v !== 'number' || !Number.isSafeInteger(v)", "typeof v !== 'number'"],
+  ['limites: chave desconhecida ignorada', 'src/limits.ts', 'if (!r) return { ok: false, motivo: `chave desconhecida: ${chave.slice(0, 40)}` };', 'if (!r) continue;'],
+  ['limites: duração sem conversão para ms', 'src/limits.ts', 'limits[r.campo] = v * r.escala;', 'limits[r.campo] = v;'],
+  ['limites: arquivo inválido vira origem "arquivo"', 'src/limits.ts', "source: { origem: 'padrao', motivo: `arquivo de limites ignorado: ${p.motivo}` }", "source: { origem: 'arquivo', motivo: null }"],
+  ['db: busy_timeout depois do WAL', 'src/db.ts', "raw.exec('PRAGMA busy_timeout = 2000; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;');", "raw.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 2000;');"],
   // Orçamento e bilhetes
   ['tx: BEGIN deferred', 'src/db.ts', "raw.exec('BEGIN IMMEDIATE')", "raw.exec('BEGIN')"],
   ['simultâneas: >= vira >', 'src/budget.ts', 'this.activeCount(now) >= this.limits.maxConcurrent', 'this.activeCount(now) > this.limits.maxConcurrent'],

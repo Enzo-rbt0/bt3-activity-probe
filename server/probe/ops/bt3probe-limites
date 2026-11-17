@@ -1,0 +1,102 @@
+#!/bin/sh
+# Tetos da sonda sem mudar código. Roda na VM, por SSH, por quem opera (nunca por agente, nunca pela web).
+#   sudo bt3probe-limites mostrar                         → arquivo atual e tetos em uso no serviço
+#   sudo bt3probe-limites definir mensagens_dia 300000    → muda um teto e reinicia o serviço
+#   sudo bt3probe-limites remover mensagens_dia           → aquele teto volta ao padrão do código
+#   sudo bt3probe-limites padrao                          → apaga o arquivo: tudo volta ao padrão
+# Chaves e tetos absolutos (conferidos pelo próprio código do servidor, dist/limits.js):
+#   mensagens_dia 1..1000000 · admissoes_dia 1..200 · conexoes_simultaneas 1..8
+#   mensagens_por_segundo 1..240 · duracao_maxima_s 1..600
+# O servidor lê o arquivo só ao iniciar: mudar reinicia o serviço, e o reinício FECHA a janela de rede
+# (de propósito). Para testar de novo, rode "bt3probe-janela abrir" outra vez.
+set -eu
+ARQ="${BT3PROBE_LIMITS_FILE:-/etc/bt3probe/limites.json}"
+DIST="${BT3PROBE_DIST:-/opt/bt3probe/dist}"
+PORTA="${BT3PROBE_PORT:-8787}"
+DIR="$(dirname "$ARQ")"
+
+uso() { echo "uso: $0 mostrar | definir <chave> <valor> | remover <chave> | padrao" >&2; exit 2; }
+
+# Lê o arquivo atual ({} se não existir), aplica a mudança, valida com o código do servidor e imprime o
+# JSON novo. Qualquer erro sai com 1 e nada é gravado.
+novo_json() { # $1 = definir|remover, $2 = chave, $3 = valor
+  node --input-type=module -e '
+    import { existsSync, readFileSync } from "node:fs";
+    import { pathToFileURL } from "node:url";
+    const [dist, arq, acao, chave, valor] = process.argv.slice(1);
+    const { parseLimits, CHAVES } = await import(pathToFileURL(dist + "/limits.js").href);
+    const sai = (m) => { console.error(m); process.exit(1); };
+    if (!Object.hasOwn(CHAVES, chave)) sai(`chave desconhecida: ${chave} (válidas: ${Object.keys(CHAVES).join(", ")})`);
+    let atual = {};
+    if (existsSync(arq)) {
+      const p = parseLimits(readFileSync(arq, "utf8"));
+      if (!p.ok) sai(`o arquivo atual é inválido (${p.motivo}). Rode "padrao" para recomeçar.`);
+      atual = p.valores;
+    }
+    if (acao === "definir") atual[chave] = Number(valor);
+    else delete atual[chave];
+    const p = parseLimits(JSON.stringify(atual));
+    if (!p.ok) sai(p.motivo);
+    process.stdout.write(JSON.stringify(p.valores) + "\n");
+  ' "$DIST" "$ARQ" "$1" "$2" "${3:-}"
+}
+
+grava() { # $1 = conteúdo
+  TMP="$(mktemp "$DIR/.limites.XXXXXX")"
+  printf '%s' "$1" > "$TMP"
+  chmod 0644 "$TMP"
+  mv -f "$TMP" "$ARQ" # troca atômica
+}
+
+tetos_em_uso() {
+  if ! SAUDE="$(curl -sf --max-time 3 "http://127.0.0.1:$PORTA/net/health")"; then
+    echo "o serviço não respondeu em 127.0.0.1:$PORTA (veja: sudo journalctl -u bt3probe -n 20)"
+    return 0
+  fi
+  printf '%s' "$SAUDE" | node -e '
+    let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => {
+      const h = JSON.parse(s);
+      console.log(`tetos em uso (origem: ${h.tetos_origem ?? "padrao"}):`);
+      for (const [k, v] of Object.entries(h.tetos ?? {})) console.log(`  ${k}: ${v}`);
+      if (h.tetos_aviso) console.log(`AVISO: ${h.tetos_aviso}`);
+      console.log(`rede: ${h.aberto ? "ABERTA" : "fechada"}`);
+    });'
+}
+
+reinicia() {
+  if [ "${BT3PROBE_NO_RESTART:-}" = "1" ]; then echo "(reinício pulado: BT3PROBE_NO_RESTART=1)"; return 0; fi
+  systemctl restart bt3probe
+  echo "serviço reiniciado: a janela de rede está FECHADA (abra de novo com bt3probe-janela, se for testar)"
+  i=0
+  while [ "$i" -lt 20 ] && ! curl -sf --max-time 1 "http://127.0.0.1:$PORTA/net/health" >/dev/null 2>&1; do
+    sleep 0.5; i=$((i + 1))
+  done
+  tetos_em_uso
+}
+
+case "${1:-}" in
+  mostrar)
+    if [ -f "$ARQ" ]; then echo "arquivo $ARQ:"; cat "$ARQ"; echo; else echo "sem arquivo: valem os tetos padrão do código"; fi
+    tetos_em_uso
+    ;;
+  definir)
+    [ $# -eq 3 ] || uso
+    case "$3" in ''|*[!0-9]*) echo "valor precisa ser um número inteiro positivo (sem pontos)" >&2; exit 2;; esac
+    J="$(novo_json definir "$2" "$3")"
+    grava "$J"
+    echo "gravado: $J"
+    reinicia
+    ;;
+  remover)
+    [ $# -eq 2 ] || uso
+    J="$(novo_json remover "$2")"
+    if [ "$J" = "{}" ]; then rm -f "$ARQ"; echo "arquivo removido: tudo no padrão"; else grava "$J"; echo "gravado: $J"; fi
+    reinicia
+    ;;
+  padrao)
+    rm -f "$ARQ"
+    echo "arquivo removido: tudo no padrão do código"
+    reinicia
+    ;;
+  *) uso ;;
+esac
