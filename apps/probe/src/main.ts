@@ -67,6 +67,7 @@ const LABELS: Record<keyof Tests, string> = {
   'N-HTTP': 'N-HTTP · servidor responde',
   'N-PATH': 'N-PATH · caminho pelo Discord',
   'N-WS-OPEN': 'N-WS-OPEN · conexões WebSocket',
+  'N-ECHO': 'N-ECHO · eco contínuo 60 s',
 };
 const GROUPS: [string, (keyof Tests)[]][] = [
   ['Ambiente e gráfico', ['A-ENV', 'A-GL2']],
@@ -75,7 +76,7 @@ const GROUPS: [string, (keyof Tests)[]][] = [
   ['Armazenamento', ['A-IDB', 'A-IDB-PERSIST']],
   ['Tela', ['A-LAYOUT', 'A-VIS']],
   ['Interação (F2b)', ['A-KEY', 'A-PAD', 'A-TOUCH', 'A-FS', 'A-AUDIO', 'A-FILE-BASIC', 'A-FILE-LARGE']],
-  ['Rede (F3a)', ['N-HTTP', 'N-PATH', 'N-WS-OPEN']],
+  ['Rede (F3a · F3b)', ['N-HTTP', 'N-PATH', 'N-WS-OPEN', 'N-ECHO']],
 ];
 
 function renderTable(tests: Tests): void {
@@ -230,7 +231,7 @@ async function main(): Promise<void> {
     persistUi();
     const v = validateReport(current);
     area.value = JSON.stringify(current, null, 2);
-    validEl.textContent = v.ok ? 'Relatório válido (schema bt3probe.report/5).' : `Relatório inválido: ${v.errors.join('; ')}`;
+    validEl.textContent = v.ok ? 'Relatório válido (schema bt3probe.report/6).' : `Relatório inválido: ${v.errors.join('; ')}`;
     validEl.className = `valid ${v.ok ? 'ok' : 'bad'}`;
     document.body.dataset.reportValid = String(v.ok);
   };

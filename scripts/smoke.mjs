@@ -1,5 +1,5 @@
 // Teste de fumaça: abre a build pronta (apps/probe/dist) num Chromium sem tela e confere que a sonda
-// termina e produz um relatório válido (formato 5). Cenários:
+// termina e produz um relatório válido (formato 6). Cenários:
 //   1. standalone: WebAssembly, JSPI/Asyncify, IndexedDB e o save entre sessões (grava, recarrega,
 //      encontra) funcionando fora do Discord;
 //   2. URL com parâmetros do Discord falsos e sem Discord por trás: A-ENV = RP depois de 10 s;
@@ -9,6 +9,9 @@
 //      O arquivo de 3 GiB é esparso, criado numa pasta temporária fora do repositório e apagado no
 //      fim; nunca vira artefato. O controle não é simulável: espera-se INV (API sem controle).
 //   5. Rede (F3a): 5 conexões de eco contra um servidor SIMULADO pelo próprio Playwright.
+//   6. Eco contínuo (F3b): confirmação em dois passos, ~4 s a 60 Hz e "Parar" (INV, parado pela
+//      pessoa), contra o mesmo servidor simulado. Os 62 s completos são testados com relógio falso
+//      nos testes unitários e contra o servidor real em 127.0.0.1 nos testes de contrato.
 // Em TODOS os cenários o endereço do servidor real (sonda.kingszin.com.br) é interceptado: a CI nunca
 // fala com a VM, nem gasta admissões dela.
 // Fora do Discord isso prova que o CÓDIGO funciona; não prova nada sobre o Discord.
@@ -22,7 +25,7 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { create as createLarge } from './criar-arquivo-teste.mjs';
-import validate from '../packages/report-schema/generated/validate-report-v5.mjs';
+import validate from '../packages/report-schema/generated/validate-report-v6.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const dist = join(root, 'apps/probe/dist');
@@ -303,6 +306,40 @@ try {
     if (!seen.bodies.every((b) => b === '{"kind":"echo","duration_s":5}')) fail(`rede: corpo de admissão inesperado ${seen.bodies[0]}`);
     if (JSON.stringify(r).includes(TICKET)) fail('rede: bilhete foi para o relatório');
     if (errors.length) fail(`rede: erros na página: ${errors.join(' | ')}`);
+    await ctx.close();
+  }
+  // Cenário 6: eco contínuo (F3b) com o servidor simulado: confirma, mede ~4 s e para.
+  {
+    const ctx = await browser.newContext();
+    const seen = await fakeServer(ctx, { open: true });
+    const page = await ctx.newPage();
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(String(e)));
+    await openProbe(page, '', 20_000);
+    await waitNet(page, 'N-HTTP');
+    await page.fill('#echo-pair', 'PC-1');
+    await page.click('#echo-start');
+    if (seen.session !== 0) fail('eco: admissão pedida antes da confirmação');
+    await page.click('#echo-confirm');
+    await page.waitForFunction(() => document.querySelector('#live-ECHO').textContent.startsWith('Medindo… 4'), undefined, { timeout: 20_000 });
+    await page.click('#echo-stop');
+    await page.waitForFunction(() => {
+      const t = JSON.parse(document.querySelector('#json').value).tests['N-ECHO'];
+      return t.ran && t.status !== 'SKIP';
+    }, undefined, { timeout: 15_000 });
+    const r = JSON.parse(await page.inputValue('#json'));
+    check('eco', r, { 'N-HTTP': ['AP'], 'N-ECHO': ['INV'] });
+    const e = r.tests['N-ECHO'];
+    if (!e.connection.stopped_by_user) fail('eco: não registrou a parada pela pessoa');
+    if (e.pair_label !== 'PC-1' || e.route !== 'absoluto') fail(`eco: rótulo/rota errados (${e.pair_label}, ${e.route})`);
+    if (e.sent + e.warmup.sent < 150) fail(`eco: só ${e.sent + e.warmup.sent} envios em ~4 s`);
+    if (e.unexpected !== 0 || e.sent - e.received > 3) fail(`eco: enviados ${e.sent}, recebidos ${e.received}, inesperados ${e.unexpected}`);
+    if (e.rtt.p50 === null || e.cadence.rate_hz === null) fail('eco: sem RTT ou cadência');
+    if (seen.session !== 1 || seen.ws !== 1) fail(`eco: servidor viu ${seen.session} admissões e ${seen.ws} WebSockets`);
+    if (seen.bodies[0] !== '{"kind":"echo","duration_s":65}') fail(`eco: corpo de admissão inesperado ${seen.bodies[0]}`);
+    if (JSON.stringify(r).includes(TICKET)) fail('eco: bilhete foi para o relatório');
+    if (errors.length) fail(`eco: erros na página: ${errors.join(' | ')}`);
+    console.log(`   eco: ${e.sent} enviados (+${e.warmup.sent} aquecimento), RTT p50 ${e.rtt.p50} ms, ${e.cadence.rate_hz} msg/s`);
     await ctx.close();
   }
 } catch (e) {
