@@ -1,6 +1,6 @@
 // F3b: N-ECHO (eco contínuo de 60 s a 60 Hz) com relógio falso e servidor de eco simulado.
 import { describe, expect, it } from 'vitest';
-import { dEstimate, decodeMsg, ECHO_CONFIG, EchoTest, encodeMsg, histogram, percentile, reservedFor, sessionSeconds, variation, type EchoConfig } from './tests/c-echo';
+import { dEstimate, decodeMsg, ECHO_CONFIG, EchoTest, encodeMsg, histogram, limitError, percentile, playability, reservedFor, sessionSeconds, variation, type EchoConfig } from './tests/c-echo';
 import { echoServer, FakeClock, type EchoServerOpts } from './test-helpers/echo-fakes';
 import { fakeFetch, HEALTH, res, server, TICKET, type Handler } from './test-helpers/net-fakes';
 
@@ -158,6 +158,44 @@ describe('N-ECHO · medição', () => {
     expect(bodies(fetch)).toHaveLength(4);
     expect(r.connection.completed).toBe(false);
     expect(r.status).toBe('RP');
+  });
+
+  it('4002 por taxa logo depois de 2 s sem resposta → explica "rajada depois de engasgo de rede"', async () => {
+    const { run } = setup({
+      latency: (seq) => (seq >= 600 ? 60_000 : 100), // a partir de ~10 s nada mais volta (engasgo)
+      closeAfter: [{ conn: 0, afterMs: 12_500, code: 4002, reason: 'taxa acima do limite' }],
+    });
+    const r = await run();
+    expect(r.status).toBe('RP');
+    expect(r.connection.error).toMatch(/provável rajada de mensagens represadas por um engasgo de rede/);
+    expect(r.connection.error).toMatch(/depois de 2,\d s sem resposta/);
+  });
+
+  it('motivos do 4002 pelo texto do servidor; motivo desconhecido cai no texto genérico', () => {
+    expect(limitError('taxa acima do limite', 300)).toBe('o servidor fechou por taxa (4002): chegaram mensagens rápido demais');
+    expect(limitError('taxa acima do limite', 2300)).toContain('2,3 s sem resposta');
+    expect(limitError('cota da sessão esgotada', 0)).toContain('cota');
+    expect(limitError('mensagem grande demais', 0)).toContain('tamanho');
+    expect(limitError('', 5000)).toBe('o servidor fechou por limite (4002): taxa, tamanho ou cota');
+  });
+
+  it('jogabilidade (proposta v1): boa / limítrofe / ruim, com os números reais da F3b', () => {
+    const j = (p99: number | null, over_1s: number) => playability({ rtt: { p99 }, delays: { over_1s } });
+    expect(j(216.4, 0)).toBe('boa'); // PC Desktop
+    expect(j(250, 0)).toBe('boa');
+    expect(j(250.1, 0)).toBe('limítrofe');
+    expect(j(325.8, 0)).toBe('limítrofe'); // PC Edge PC-1
+    expect(j(407.8, 0)).toBe('limítrofe'); // A16 Discord
+    expect(j(500, 3)).toBe('limítrofe');
+    expect(j(500, 4)).toBe('ruim');
+    expect(j(1050.9, 50)).toBe('ruim'); // S26 Discord
+    expect(j(200, 1)).toBe('limítrofe'); // p99 baixo, mas teve resposta acima de 1 s
+    expect(j(null, 0)).toBeNull();
+  });
+
+  it('o detalhe do AP traz a jogabilidade; INV por página escondida não traz', async () => {
+    const r = await setup({ latency: () => 100 }).run();
+    expect(r.detail).toContain('Jogável (proposta v1): boa.');
   });
 
   it('servidor fecha com 4002 (limite) → RP, sem reconectar', async () => {

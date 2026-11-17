@@ -56,7 +56,7 @@ export interface EchoServerOpts {
   latency?: (seq: number, sentAt: number) => number;
   drop?: (seq: number) => boolean;
   /** Fecha a conexão n (0, 1, …) com este código depois de `afterMs` aberta. */
-  closeAfter?: { conn: number; afterMs: number; code: number }[];
+  closeAfter?: { conn: number; afterMs: number; code: number; reason?: string }[];
   refuse?: boolean;
 }
 
@@ -69,7 +69,7 @@ export function echoServer(clock: FakeClock, o: EchoServerOpts = {}): WsCtor & {
   class W implements WsLike {
     readyState = 0;
     binaryType = 'blob';
-    private fns: Record<string, ((ev: { data?: unknown; code?: number }) => void)[]> = {};
+    private fns: Record<string, ((ev: { data?: unknown; code?: number; reason?: string }) => void)[]> = {};
     private open = false;
     constructor(url: string) {
       urls.push(url);
@@ -84,20 +84,20 @@ export function echoServer(clock: FakeClock, o: EchoServerOpts = {}): WsCtor & {
         this.readyState = 1;
         this.emit('open', {});
         for (const c of o.closeAfter ?? []) {
-          if (c.conn === idx) clock.set(() => this.serverClose(c.code), c.afterMs);
+          if (c.conn === idx) clock.set(() => this.serverClose(c.code, c.reason), c.afterMs);
         }
       }, o.openMs ?? 50);
     }
-    addEventListener(type: string, fn: (ev: { data?: unknown; code?: number }) => void) {
+    addEventListener(type: string, fn: (ev: { data?: unknown; code?: number; reason?: string }) => void) {
       (this.fns[type] ??= []).push(fn);
     }
-    private emit(type: string, ev: { data?: unknown; code?: number }) {
+    private emit(type: string, ev: { data?: unknown; code?: number; reason?: string }) {
       for (const fn of this.fns[type] ?? []) fn(ev);
     }
-    private serverClose(code: number) {
+    private serverClose(code: number, reason = '') {
       if (!this.open) return;
       this.open = false;
-      this.emit('close', { code });
+      this.emit('close', { code, reason });
     }
     send(data: string | ArrayBuffer) {
       if (!this.open) throw new Error('fechado');

@@ -24,6 +24,13 @@ curl -s http://127.0.0.1:8787/net/health | head -c 60; echo   # deve mostrar "ab
 
 ## 3. Como fazer cada medição
 
+> **Lições de 17/11/2026:**
+> - a **chamada de voz** precisa estar **igual nos dois lados** de cada par (ligada no Discord e no navegador, ou desligada nos dois): no celular com Wi-Fi ela muda muito o resultado;
+> - **um aparelho por vez** na mesma rede (saia da chamada no outro celular);
+> - escreva o **rótulo do par** antes de medir;
+> - depois de "Confirmar", **não troque de aba**, nem por um instante: o navegador freia a página escondida e o resultado vira INV.
+
+
 1. Abra a sonda no ambiente da vez.
 2. Espere o N-HTTP ficar **AP**.
 3. No cartão **"Eco contínuo (N-ECHO · F3b)"**, escreva o **rótulo do par** (tabela abaixo).
@@ -63,6 +70,16 @@ Fora do Discord, o endereço é `https://enzo-rbt0.github.io/bt3-activity-probe/
 | **AP** | 60 s completos, sem queda, página sempre visível, eco de 99% ou mais |
 | **INV** | Página escondida; janela fechada; limite do dia; eco entre 95% e 99%; houve reconexão; ou você clicou em "Parar" |
 | **RP** | Não completou mesmo com 3 reconexões; eco abaixo de 95%; ou o servidor fechou por limite (4002) |
+
+A partir da v0.5.1, o detalhe do N-ECHO também traz **"Jogável (proposta v1)"**, separado do AP. O AP só diz que a conexão aguentou.
+
+| Jogável | Quando |
+|---|---|
+| **boa** | p99 até 250 ms e nenhuma resposta acima de 1 s |
+| **limítrofe** | p99 até 500 ms e no máximo 3 respostas acima de 1 s |
+| **ruim** | o resto |
+
+Os limites são **proposta** e serão revistos na F3f.
 
 O que olhar no JSON (`tests["N-ECHO"]`):
 - `rtt`: p50 (típico), p95 e p99 (piores momentos) e máximo, em ms;
