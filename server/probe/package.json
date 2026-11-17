@@ -1,6 +1,6 @@
 {
   "name": "bt3probe-server",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "Backend de rede da sonda (F3). Só código e testes locais na F3-0: nada de deploy.",
   "type": "module",

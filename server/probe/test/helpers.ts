@@ -100,15 +100,15 @@ export function http(port: number, method: string, path: string, body?: string, 
   });
 }
 
-export const admit = (port: number, duration_s?: number) =>
-  http(port, 'POST', '/net/session', JSON.stringify(duration_s === undefined ? { kind: 'echo' } : { kind: 'echo', duration_s }));
+export const admit = (port: number, duration_s?: number, kind: 'echo' | 'relay' = 'echo') =>
+  http(port, 'POST', '/net/session', JSON.stringify(duration_s === undefined ? { kind } : { kind, duration_s }));
 
 /** Resultado de uma tentativa de WebSocket: recusa HTTP antes do upgrade OU conexão aberta. */
 export type WsAttempt = { kind: 'http'; status: number } | { kind: 'open'; ws: WebSocket; closed: Promise<{ code: number; reason: string }>; messages: Buffer[] };
 
-export function connect(port: number, ticket: string, origin = ORIGIN): Promise<WsAttempt> {
+export function connect(port: number, ticket: string, origin = ORIGIN, path = '/net/ws/echo'): Promise<WsAttempt> {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`ws://127.0.0.1:${port}/net/ws/echo?bilhete=${ticket}`, { origin });
+    const ws = new WebSocket(`ws://127.0.0.1:${port}${path}?bilhete=${ticket}`, { origin });
     const messages: Buffer[] = [];
     const closed = new Promise<{ code: number; reason: string }>((r) => ws.on('close', (code, reason) => r({ code, reason: reason.toString() })));
     ws.on('message', (d: Buffer) => messages.push(d));
@@ -141,4 +141,25 @@ export async function waitFor(cond: () => boolean, ms = 2000): Promise<void> {
     if (Date.now() > end) throw new Error('tempo esgotado');
     await tick(10);
   }
+}
+
+/** Sessão de relay (F3c): separa mensagens de controle (texto JSON) de quadros binários. */
+export async function openRelay(port: number, duration_s = 180) {
+  const r = await admit(port, duration_s, 'relay');
+  if (r.status !== 201) throw new Error(`admissão falhou: ${r.status} ${JSON.stringify(r.body)}`);
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/net/ws/relay?bilhete=${r.body.bilhete}`, { origin: ORIGIN });
+  const ctl: Record<string, unknown>[] = [];
+  const bins: Buffer[] = [];
+  const closed = new Promise<{ code: number; reason: string }>((res) => ws.on('close', (code, reason) => res({ code, reason: reason.toString() })));
+  ws.on('message', (d: Buffer, isBinary: boolean) => (isBinary ? bins.push(d) : ctl.push(JSON.parse(d.toString()))));
+  await new Promise<void>((res, rej) => {
+    ws.once('open', () => res());
+    ws.once('unexpected-response', (_q, rs) => rej(new Error(`upgrade ${rs.statusCode}`)));
+  });
+  const say = (m: Record<string, unknown>) => ws.send(JSON.stringify(m));
+  const next = async (t: string) => {
+    await waitFor(() => ctl.some((m) => m.t === t));
+    return ctl.find((m) => m.t === t)!;
+  };
+  return { ws, ctl, bins, closed, say, next, ticket: r.body.bilhete as string };
 }

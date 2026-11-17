@@ -8,7 +8,7 @@ import { admit, connect, harness, http, openSession, ORIGIN, tick, type Harness 
 // JSON válido mas fora do contrato (e inválido): todos têm de dar 400 sem gastar nada.
 const BAD_BODIES = [
   'null', '[]', '[{"kind":"echo"}]', '"echo"', '42', 'true', 'false', '{}',
-  '{"kind":null}', '{"kind":["echo"]}', '{"kind":{"k":"echo"}}', '{"kind":"ECHO"}', '{"kind":"relay"}',
+  '{"kind":null}', '{"kind":["echo"]}', '{"kind":{"k":"echo"}}', '{"kind":"ECHO"}', '{"kind":"Relay"}',
   '{"kind":"echo","duration_s":"60"}', '{"kind":"echo","duration_s":null}', '{"kind":"echo","duration_s":0}',
   '{"kind":"echo","duration_s":-1}', '{"kind":"echo","duration_s":[60]}', '{"kind":"echo","duration_s":1e400}',
   '{"kind":"echo","extra":1}', '{"__proto__":{"kind":"echo"}}', '{"kind":"echo","__proto__":{}}', '{nope', '\u0000',
@@ -73,7 +73,7 @@ describe('T11 — Origin, corpo e privacidade', () => {
     h = await harness();
     expect((await http(h.port, 'POST', '/net/session', JSON.stringify({ kind: 'echo', pad: 'x'.repeat(300) }))).status).toBe(413);
     expect((await http(h.port, 'POST', '/net/session', '{nope')).status).toBe(400);
-    expect((await http(h.port, 'POST', '/net/session', '{"kind":"relay"}')).status).toBe(400);
+    expect((await http(h.port, 'POST', '/net/session', '{"kind":"relay2"}')).status).toBe(400);
     expect((await http(h.port, 'POST', '/net/session', '{"kind":"echo","duration_s":-1}')).status).toBe(400);
     expect((await http(h.port, 'POST', '/net/session', '{"kind":"echo","duration_s":"abc"}')).status).toBe(400);
     expect((await http(h.port, 'GET', '/net/outra')).status).toBe(404);
@@ -87,6 +87,7 @@ describe('T11 — Origin, corpo e privacidade', () => {
     expect(parseSessionRequest('{"kind":"echo"}', DEFAULT_LIMITS)).toEqual({ ok: true, kind: 'echo', durationMs: 60_000 });
     expect(parseSessionRequest('{"kind":"echo","duration_s":1.5}', DEFAULT_LIMITS)).toEqual({ ok: true, kind: 'echo', durationMs: 1500 });
     expect(parseSessionRequest('null', DEFAULT_LIMITS)).toEqual({ ok: false, erro: 'o corpo precisa ser um objeto JSON' });
+    expect(parseSessionRequest('{"kind":"relay","duration_s":180}', DEFAULT_LIMITS)).toEqual({ ok: true, kind: 'relay', durationMs: 180_000 });
   });
 
   it(`${BAD_BODIES.length} corpos fora do contrato → 400 cada, servidor segue vivo e nada é reservado`, async () => {

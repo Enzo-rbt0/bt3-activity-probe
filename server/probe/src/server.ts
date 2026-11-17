@@ -7,6 +7,7 @@ import type { Duplex } from 'node:stream';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { Budget, DEFAULT_LIMITS, KINDS, type Kind, type Limits } from './budget.js';
 import type { LimitsSource } from './limits.js';
+import { Rooms } from './relay.js';
 import type { Clock, TimerHandle } from './clock.js';
 import { WindowWatcher } from './config.js';
 import type { Db } from './db.js';
@@ -57,6 +58,7 @@ export function parseSessionRequest(text: string, limits: Limits): SessionReques
 
 export class ProbeServer {
   readonly budget: Budget;
+  readonly rooms: Rooms;
   readonly window: WindowWatcher;
   readonly conns = new Set<Conn>();
   private http: Server;
@@ -72,6 +74,7 @@ export class ProbeServer {
     this.origins = new Set(o.origins ?? DEFAULT_ORIGINS);
     this.log = o.log ?? makeLogger();
     this.budget = new Budget(o.db, this.limits);
+    this.rooms = new Rooms(() => this.o.clock.now(), this.log);
     this.window = new WindowWatcher(o.windowFile, o.clock, o.processStartedAt, o.readWindow);
     // maxPayload é a trava dura do ws; o limite de 64 bytes da sonda é aplicado em Conn (fecha com 4002).
     this.wss = new WebSocketServer({ noServer: true, maxPayload: 1024, perMessageDeflate: false });
@@ -111,6 +114,7 @@ export class ProbeServer {
   // Segunda trava de prazo e inatividade, independente dos timers de cada conexão.
   sweep(): void {
     for (const c of [...this.conns]) c.check();
+    this.rooms.sweep();
   }
 
   // Origin NÃO é autenticação: qualquer cliente fora do navegador (curl, script) escolhe o cabeçalho
@@ -243,22 +247,23 @@ export class ProbeServer {
   private onUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
     try {
       const url = new URL(req.url ?? '/', 'http://local');
-      if (url.pathname !== '/net/ws/echo') return this.reject(socket, 404, 'rota desconhecida');
+      const kind: Kind | null = url.pathname === '/net/ws/echo' ? 'echo' : url.pathname === '/net/ws/relay' ? 'relay' : null;
+      if (!kind) return this.reject(socket, 404, 'rota desconhecida');
       if (!this.originOk(req)) return this.reject(socket, 403, 'origem não permitida');
       const w = this.window.current();
       if (this.stopping || !w.open || w.until === null) return this.reject(socket, 503, 'rede fechada');
-      const session = this.budget.redeem(url.searchParams.get('bilhete') ?? '', w.until, this.o.clock.now());
+      const session = this.budget.redeem(url.searchParams.get('bilhete') ?? '', w.until, this.o.clock.now(), kind);
       if (!session) {
-        this.log('upgrade_recusado', { status: 403, reason: 'bilhete inválido, vencido ou já usado' });
-        return this.reject(socket, 403, 'bilhete inválido, vencido ou já usado');
+        this.log('upgrade_recusado', { status: 403, reason: 'bilhete inválido, vencido, já usado ou de outro tipo' });
+        return this.reject(socket, 403, 'bilhete inválido, vencido, já usado ou de outro tipo');
       }
-      this.wss.handleUpgrade(req, socket, head, (ws) => this.attach(ws, session.id, session.deadline, session.reserved));
+      this.wss.handleUpgrade(req, socket, head, (ws) => this.attach(ws, kind, session.id, session.deadline, session.reserved));
     } catch {
       this.reject(socket, 503, 'erro interno: fechado');
     }
   }
 
-  private attach(ws: WebSocket, sessionId: string, deadline: number, reserved: number): void {
+  private attach(ws: WebSocket, kind: Kind, sessionId: string, deadline: number, reserved: number): void {
     const conn = new Conn(
       sessionId,
       deadline,
@@ -268,10 +273,12 @@ export class ProbeServer {
       this.limits,
       () => ({ open: this.window.current().open && !this.stopping }),
       (c) => this.ended(c),
-      (c, data) => c.send(data), // eco
+      kind === 'echo'
+        ? (c, data) => c.send(data) // eco (sempre binário)
+        : (c, data, isBinary) => (isBinary ? this.rooms.relay(c, data) : this.rooms.control(c, data.toString('utf8'))),
     );
     this.conns.add(conn);
-    ws.on('message', (data: Buffer, isBinary: boolean) => conn.onMessage(isBinary ? data : Buffer.from(data)));
+    ws.on('message', (data: Buffer, isBinary: boolean) => conn.onMessage(Buffer.isBuffer(data) ? data : Buffer.from(data), isBinary));
     ws.on('close', () => conn.remoteClosed());
     ws.on('error', () => conn.remoteClosed());
     // Uma janela que já fechou entre o resgate e aqui encerra na hora.
@@ -280,6 +287,7 @@ export class ProbeServer {
 
   private ended(c: Conn): void {
     this.conns.delete(c);
+    this.rooms.left(c);
     try {
       this.budget.end(c.sessionId, c.received, this.o.clock.now());
     } catch {

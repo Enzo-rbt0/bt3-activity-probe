@@ -11,7 +11,7 @@ export const CLOSE_LIMIT = 4002;
 export const CLOSE_GOING_AWAY = 1001;
 
 export interface Socketish {
-  send(data: Buffer): void;
+  send(data: Buffer | string): void;
   close(code: number, reason: string): void;
 }
 
@@ -35,7 +35,7 @@ export class Conn {
     private limits: Limits,
     private window: WindowCheck,
     private onEnd: (c: Conn) => void,
-    private respond: (c: Conn, data: Buffer) => void,
+    private respond: (c: Conn, data: Buffer, isBinary: boolean) => void,
   ) {
     const now = clock.now();
     this.lastMsgAt = now;
@@ -67,7 +67,7 @@ export class Conn {
     return true;
   }
 
-  onMessage(data: Buffer): void {
+  onMessage(data: Buffer, isBinary = true): void {
     if (this.closed) return;
     // Prazo e janela conferidos ANTES de processar: nada é respondido depois do prazo.
     if (!this.check()) return;
@@ -84,10 +84,10 @@ export class Conn {
     if (this.received > this.reserved) return this.close(CLOSE_LIMIT, 'cota da sessão esgotada');
     this.lastMsgAt = now;
     this.schedule();
-    this.respond(this, data);
+    this.respond(this, data, isBinary);
   }
 
-  send(data: Buffer): void {
+  send(data: Buffer | string): void {
     if (!this.closed) this.sock.send(data);
   }
 
