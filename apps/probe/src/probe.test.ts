@@ -10,6 +10,8 @@ import { classifyGl2, gpuAcceleration, isSoftwareRenderer } from './tests/a-gl2'
 import type { Gl2Result, Tests } from './report/types';
 import { FEATURE_KEYS } from './report/types';
 import { httpResult, pathResult, runPathChecks, WsOpenTest } from './tests/c-net';
+import { EchoTest } from './tests/c-echo';
+import { echoServer, FakeClock } from './test-helpers/echo-fakes';
 import { fakeFetch, fakeWs, HEALTH, now, PAGE, res, server, T, TICKET } from './test-helpers/net-fakes';
 
 const DISCORD_QS = '?frame_id=f1&instance_id=i-123&platform=desktop&guild_id=999&channel_id=888';
@@ -150,6 +152,8 @@ function fullTests(): Tests {
     'N-HTTP': httpResult(null, 'discord'),
     'N-PATH': pathResult(null, 'discord'),
     'N-WS-OPEN': new WsOpenTest({ fetch: async () => { throw new Error('sem rede'); }, now: () => 0, WebSocket: class {} as never }).result(),
+    // F3b no estado inicial.
+    'N-ECHO': new EchoTest({ fetch: async () => { throw new Error('sem rede'); }, now: () => 0, WebSocket: class {} as never }).result(),
   };
 }
 
@@ -195,7 +199,7 @@ describe('relatório e schema', () => {
     const v = validateReport(r);
     expect(v.errors).toEqual([]);
     expect(v.ok).toBe(true);
-    expect(r.schema).toBe('bt3probe.report/5');
+    expect(r.schema).toBe('bt3probe.report/6');
     expect(r.run.duration_ms).toBe(813);
     expect(reportFileName(r)).toBe('bt3probe-discord-desktop-app-2026-11-15T12-05-00-000Z.json');
   });
@@ -232,7 +236,7 @@ describe('relatório e schema', () => {
   });
   it('relatórios da F2a (formato 2) e da F2b-0 (formato 3) continuam válidos', () => {
     const r = buildReport(input()) as unknown as Record<string, unknown> & { tests: Record<string, unknown> };
-    const { 'A-KEY': _1, 'A-PAD': _2, 'A-TOUCH': _3, 'A-FS': _4, 'A-AUDIO': _5, 'A-FILE-BASIC': _6, 'A-FILE-LARGE': _7, 'N-HTTP': _8, 'N-PATH': _9, 'N-WS-OPEN': _10, ...f2a } = r.tests;
+    const { 'A-KEY': _1, 'A-PAD': _2, 'A-TOUCH': _3, 'A-FS': _4, 'A-AUDIO': _5, 'A-FILE-BASIC': _6, 'A-FILE-LARGE': _7, 'N-HTTP': _8, 'N-PATH': _9, 'N-WS-OPEN': _10, 'N-ECHO': _11, ...f2a } = r.tests;
     const v3 = { ...r, schema: 'bt3probe.report/3', tests: f2a };
     // Formato 3 (F2b-0, publicado na 0.2.1) continua válido; o formato 4 exige os testes da F2b.
     expect(validateReport(v3).errors).toEqual([]);
@@ -255,12 +259,49 @@ describe('relatório e schema', () => {
   });
   it('relatório da F2b (formato 4) continua válido; o formato 5 exige os testes de rede', () => {
     const r = buildReport(input()) as unknown as Record<string, unknown> & { tests: Record<string, unknown> };
-    const { 'N-HTTP': _1, 'N-PATH': _2, 'N-WS-OPEN': _3, ...f2b } = r.tests;
+    const { 'N-HTTP': _1, 'N-PATH': _2, 'N-WS-OPEN': _3, 'N-ECHO': _4, ...f2b } = r.tests;
     const v4 = { ...r, schema: 'bt3probe.report/4', tests: f2b };
     expect(validateReport(v4).errors).toEqual([]);
     expect(validateReport({ ...v4, schema: 'bt3probe.report/5' }).ok).toBe(false);
   });
-  it('rede: resultados reais (sucesso, falhas variadas e caminhos) passam no schema v5', async () => {
+  it('relatório da F3a (formato 5) continua válido; o formato 6 exige o N-ECHO', () => {
+    const r = buildReport(input()) as unknown as Record<string, unknown> & { tests: Record<string, unknown> };
+    const { 'N-ECHO': _1, ...f3a } = r.tests;
+    const v5 = { ...r, schema: 'bt3probe.report/5', tests: f3a };
+    expect(validateReport(v5).errors).toEqual([]);
+    expect(validateReport({ ...v5, schema: 'bt3probe.report/6' }).ok).toBe(false);
+    expect(validateReport({ ...r, schema: 'bt3probe.report/5' }).ok).toBe(false); // v5 não conhece o N-ECHO
+  });
+  it('eco contínuo: resultados reais (AP, queda e reconexão, 4002, parado) passam no schema v6 sem bilhete', async () => {
+    const BASES = { httpBase: PAGE, wsBase: 'wss://x.discordsays.com' };
+    const cases = [
+      { latency: (seq: number) => (seq % 97 === 0 ? 1500 : 90 + (seq % 7)) },
+      { closeAfter: [{ conn: 0, afterMs: 15_000, code: 1006 }] },
+      { closeAfter: [{ conn: 0, afterMs: 5000, code: 4002 }] },
+      { refuse: true },
+    ];
+    for (const o of cases) {
+      const clock = new FakeClock();
+      const e = new EchoTest({ fetch: fakeFetch(server()), now: clock.now, timeoutMs: 5000, WebSocket: echoServer(clock, o), timers: clock });
+      e.setPairLabel('PC-1');
+      const p = e.run(BASES, 'relativo');
+      await clock.runUntil(p);
+      const r = buildReport(input({ tests: { ...fullTests(), 'N-ECHO': e.result() } }));
+      expect(validateReport(r).errors).toEqual([]);
+      expect(JSON.stringify(r)).not.toContain(TICKET);
+    }
+  });
+  it('eco contínuo: o schema recusa amostras cruas, URL e campos extras', () => {
+    const r = buildReport(input()) as unknown as Record<string, Record<string, unknown>>;
+    const t = r.tests as Record<string, Record<string, unknown>>;
+    const e = t['N-ECHO']!;
+    expect(validateReport({ ...r, tests: { ...t, 'N-ECHO': { ...e, samples: [100, 101] } } }).ok).toBe(false);
+    expect(validateReport({ ...r, tests: { ...t, 'N-ECHO': { ...e, url: 'wss://x/net/ws/echo?bilhete=ab' } } }).ok).toBe(false);
+    expect(validateReport({ ...r, tests: { ...t, 'N-ECHO': { ...e, worst: Array(21).fill({ t_ms: 1, rtt_ms: 1 }) } } }).ok).toBe(false);
+    expect(validateReport({ ...r, tests: { ...t, 'N-ECHO': { ...e, pair_label: 'x'.repeat(41) } } }).ok).toBe(false);
+    expect(validateReport({ ...r, tests: { ...t, 'N-ECHO': { ...e, connection: { ...(e.connection as object), ticket: 'ab'.repeat(16) } } } }).ok).toBe(false);
+  });
+  it('rede: resultados reais (sucesso, falhas variadas e caminhos) passam no schema v6', async () => {
     const W = fakeWs(['ok', 'recusa', 'fecha-4002', 'trava', 'eco-errado']);
     const t = new WsOpenTest({ fetch: fakeFetch(server()), now, timeoutMs: T, WebSocket: W });
     await t.run({ httpBase: PAGE, wsBase: 'wss://x.discordsays.com' });

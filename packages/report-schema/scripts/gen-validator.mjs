@@ -24,7 +24,7 @@ const DTS = [
 ].join('\n');
 
 // Um validador por versão do formato: relatórios antigos continuam verificáveis.
-for (const v of [1, 2, 3, 4, 5]) {
+for (const v of [1, 2, 3, 4, 5, 6]) {
   const schema = JSON.parse(readFileSync(join(here, `../schema/report.v${v}.json`), 'utf8'));
   const ajv = new Ajv({ code: { source: true, esm: true }, allErrors: true, strict: true });
   const code = standaloneCode(ajv, ajv.compile(schema)).replaceAll(RUNTIME, INLINE);
@@ -32,4 +32,4 @@ for (const v of [1, 2, 3, 4, 5]) {
   writeFileSync(join(out, `validate-report-v${v}.mjs`), `// Gerado por scripts/gen-validator.mjs. Não editar.\n${code}`);
   writeFileSync(join(out, `validate-report-v${v}.d.mts`), DTS);
 }
-console.log('validadores do relatório gerados (v1 a v5)');
+console.log('validadores do relatório gerados (v1 a v6)');

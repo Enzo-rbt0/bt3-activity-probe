@@ -25,7 +25,7 @@ export function echoText(d: unknown): string | null {
   if (ArrayBuffer.isView(d)) return new TextDecoder().decode(d);
   return null;
 }
-const TICKET_RE = /^[0-9a-f]{32}$/;
+export const TICKET_RE = /^[0-9a-f]{32}$/;
 
 export type NetRoute = 'relativo' | 'proxy' | 'absoluto';
 export type NetError = 'tempo' | 'rede' | 'http' | 'json';
@@ -83,7 +83,7 @@ export type FetchLike = (url: string, init?: RequestInit) => Promise<ResponseLik
 export interface WsLike {
   readonly readyState: number;
   binaryType?: string;
-  send(data: string): void;
+  send(data: string | ArrayBuffer): void;
   close(code?: number, reason?: string): void;
   addEventListener(type: 'open' | 'message' | 'error' | 'close', fn: (ev: { data?: unknown; code?: number }) => void): void;
 }
@@ -147,7 +147,7 @@ const ERR_TXT: Record<NetError, string> = {
   json: 'respondeu, mas não é o servidor da sonda',
 };
 
-function describe(p: RouteProbe): string {
+export function describe(p: RouteProbe): string {
   if (!p.tested) return 'não testado';
   if (p.json_ok) return `ok (${p.ms} ms)`;
   return `${ERR_TXT[p.error ?? 'rede']}${p.http_status !== null ? ` [HTTP ${p.http_status}]` : ''}`;
@@ -431,7 +431,7 @@ export class WsOpenTest {
   }
 }
 
-function admitError(status: number): string {
+export function admitError(status: number): string {
   if (status === 403) return 'admissão recusada (403): o servidor não reconheceu a origem da página';
   if (status === 429) return 'admissão recusada (429): limite do servidor (vagas, admissões ou mensagens do dia)';
   if (status === 503) return 'admissão recusada (503): rede fechada no servidor';

@@ -4,6 +4,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { probeHealth, WsOpenTest, type FetchLike, type WsCtor, type WsLike } from '../../../apps/probe/src/tests/c-net';
+import { EchoTest } from '../../../apps/probe/src/tests/c-echo';
 import { harness, ORIGIN, type Harness } from './helpers.js';
 
 let h: Harness | null = null;
@@ -26,7 +27,7 @@ function wsWithOrigin(origin: string): WsCtor {
     get readyState() {
       return this.ws.readyState;
     }
-    send(d: string) {
+    send(d: string | ArrayBuffer) {
       this.ws.send(d);
     }
     close(code?: number, reason?: string) {
@@ -130,6 +131,66 @@ describe('contrato cliente (página) × servidor (VM)', () => {
     expect(r.attempts[0]).toMatchObject({ admit_status: 201, failed_stage: 'upgrade', open_ok: false, close_code: 1006 });
     expect(r.attempts[1]).toMatchObject({ admit_status: 503, failed_stage: 'admissao' }); // e para aqui
     expect(r.status).toBe('INV');
+  });
+});
+
+describe('contrato N-ECHO (F3b) × servidor real', () => {
+  // O servidor do teste usa relógio manual; aqui ele anda junto com o relógio real, para o token
+  // bucket (120/s) e os prazos se comportarem como na VM.
+  const followRealTime = (hh: Harness) => {
+    let last = performance.now();
+    const iv = setInterval(() => {
+      const n = performance.now();
+      hh.clock.advance(n - last);
+      last = n;
+    }, 5);
+    return () => clearInterval(iv);
+  };
+
+  it('4 s a 60 Hz em mensagens binárias de 16 bytes: sem 4002, eco de tudo, reserva coerente e devolvida', async () => {
+    h = await harness();
+    const stopClock = followRealTime(h);
+    try {
+      const e = new EchoTest(
+        { fetch: fetchWithOrigin(ORIGIN), now: () => performance.now(), timeoutMs: 3000, WebSocket: wsWithOrigin(ORIGIN) },
+        { warmupMs: 1000, measureMs: 3000 },
+      );
+      await e.run({ httpBase: `http://127.0.0.1:${h.port}`, wsBase: `ws://127.0.0.1:${h.port}` }, 'relativo');
+      const r = e.result();
+      expect(r.connection).toMatchObject({ admissions: 1, admit_statuses: [201], reconnects: 0, completed: true, close_codes: [] });
+      expect(r.status).toBe('AP');
+      expect(r.sent).toBeGreaterThanOrEqual(170);
+      expect(r.received).toBe(r.sent);
+      expect(r.unexpected).toBe(0);
+      expect(r.config.session_s).toBe(7); // 4 s de envio + 3 s de folga
+      await new Promise((res) => setTimeout(res, 100));
+      const row = h.db.raw.prepare('SELECT duration_ms, reserved_msgs, used_msgs, ended_at IS NOT NULL AS ended FROM sessions').get() as Record<string, number>;
+      expect(row.duration_ms).toBe(7000);
+      expect(row.reserved_msgs).toBe(462); // 7 × 60 × 1,1
+      expect(row.used_msgs).toBe(r.sent + r.warmup.sent);
+      expect(row.ended).toBe(1);
+      expect(h.server.budget.stats(h.clock.now())).toMatchObject({ active: 0, reserved_msgs: r.sent + r.warmup.sent });
+      expect(JSON.stringify(r)).not.toMatch(/[0-9a-f]{32}/);
+    } finally {
+      stopClock();
+    }
+  });
+
+  it('servidor com taxa máxima abaixo de 60/s fecha com 4002 → o cliente dá RP "limite" e não reconecta', async () => {
+    h = await harness({ limits: { maxRatePerSec: 30 } });
+    const stopClock = followRealTime(h);
+    try {
+      const e = new EchoTest(
+        { fetch: fetchWithOrigin(ORIGIN), now: () => performance.now(), timeoutMs: 3000, WebSocket: wsWithOrigin(ORIGIN) },
+        { warmupMs: 0, measureMs: 3000 },
+      );
+      await e.run({ httpBase: `http://127.0.0.1:${h.port}`, wsBase: `ws://127.0.0.1:${h.port}` }, 'relativo');
+      const r = e.result();
+      expect(r.status).toBe('RP');
+      expect(r.connection).toMatchObject({ failed_stage: 'limite', close_codes: [4002], admissions: 1 });
+    } finally {
+      stopClock();
+    }
   });
 });
 
