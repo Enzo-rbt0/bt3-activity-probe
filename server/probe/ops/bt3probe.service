@@ -17,6 +17,7 @@ Environment=BT3PROBE_HOST=127.0.0.1
 Environment=BT3PROBE_PORT=8787
 Environment=BT3PROBE_DB=/var/lib/bt3probe/probe.db
 Environment=BT3PROBE_WINDOW_FILE=/etc/bt3probe/janela
+Environment=BT3PROBE_LIMITS_FILE=/etc/bt3probe/limites.json
 Restart=on-failure
 RestartSec=5
 KillSignal=SIGTERM

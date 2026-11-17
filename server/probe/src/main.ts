@@ -2,9 +2,11 @@
 // ops/bt3probe-janela rodado depois deste processo iniciar (ver config.ts).
 // Variáveis: BT3PROBE_HOST (padrão 127.0.0.1), BT3PROBE_PORT (padrão 8787),
 // BT3PROBE_DB (padrão /var/lib/bt3probe/probe.db), BT3PROBE_WINDOW_FILE (padrão /etc/bt3probe/janela),
-// BT3PROBE_ORIGINS (lista separada por vírgula; padrão: Activity do Discord e GitHub Pages da sonda).
+// BT3PROBE_ORIGINS (lista separada por vírgula; padrão: Activity do Discord e GitHub Pages da sonda),
+// BT3PROBE_LIMITS_FILE (padrão /etc/bt3probe/limites.json; ausente = tetos padrão do código, ver limits.ts).
 import { systemClock } from './clock.js';
 import { openDb } from './db.js';
+import { loadLimits } from './limits.js';
 import { makeLogger } from './log.js';
 import { DEFAULT_ORIGINS, ProbeServer } from './server.js';
 import { shutdown } from './shutdown.js';
@@ -17,6 +19,11 @@ if (host !== '127.0.0.1' && env.BT3PROBE_ALLOW_PUBLIC_BIND !== 'sim') {
   process.exit(2);
 }
 
+// Tetos lidos uma vez, aqui. Mudar o arquivo só vale depois de reiniciar (o script bt3probe-limites
+// reinicia o serviço, o que também fecha a janela).
+const { limits, source } = loadLimits(env.BT3PROBE_LIMITS_FILE ?? '/etc/bt3probe/limites.json');
+log('limites', { reason: source.motivo ?? source.origem });
+
 const server = new ProbeServer({
   db: openDb(env.BT3PROBE_DB ?? '/var/lib/bt3probe/probe.db'),
   clock: systemClock,
@@ -25,6 +32,8 @@ const server = new ProbeServer({
   host,
   port: Number(env.BT3PROBE_PORT ?? 8787),
   origins: env.BT3PROBE_ORIGINS ? env.BT3PROBE_ORIGINS.split(',').map((s) => s.trim()) : DEFAULT_ORIGINS,
+  limits,
+  limitsSource: source,
   log,
 });
 

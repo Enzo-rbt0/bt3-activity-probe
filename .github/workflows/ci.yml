@@ -64,8 +64,8 @@ jobs:
         run: npm run typecheck
       - name: Testes (concorrência, orçamento, reinício, encerramento, SIGTERM)
         run: npm test
-      - name: Script do interruptor
-        run: sh -n ops/bt3probe-janela
+      - name: Scripts de operação (sintaxe)
+        run: sh -n ops/bt3probe-janela && sh -n ops/bt3probe-limites
 
   # Testes de mutação do servidor: cada mutante altera um ponto crítico (limites, bilhete, janela,
   # reinício, validação do corpo, encerramento) e a suíte TEM de falhar. Falha o job se algum sobreviver.

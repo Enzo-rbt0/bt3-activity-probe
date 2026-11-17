@@ -35,7 +35,9 @@ CREATE INDEX IF NOT EXISTS sessions_open ON sessions (ended_at);
 
 export function openDb(path: string): Db {
   const raw = new DatabaseSync(path);
-  raw.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 2000;');
+  // busy_timeout PRIMEIRO: ligar o WAL precisa de trava, e várias aberturas simultâneas do mesmo arquivo
+  // (teste de concorrência) falhavam na hora com "database is locked" em vez de esperar.
+  raw.exec('PRAGMA busy_timeout = 2000; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;');
   raw.exec(SCHEMA);
   const db: Db = {
     raw,
