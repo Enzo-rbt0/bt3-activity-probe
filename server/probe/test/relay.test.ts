@@ -1,6 +1,7 @@
 // T16 — F3c: salas de relay entre dois aparelhos (servidor real em 127.0.0.1, relógio manual).
 import { afterEach, describe, expect, it } from 'vitest';
-import { CODE_ALPHABET, CODE_LEN, MAX_JOIN_TRIES, normalizeCode, ROOM_WAIT_MS } from '../src/relay.js';
+import { CODE_ALPHABET, CODE_LEN, MAX_JOIN_TRIES, normalizeCode, Rooms, ROOM_WAIT_MS } from '../src/relay.js';
+import type { Conn } from '../src/ws/conn.js';
 import { admit, connect, harness, openRelay, tick, waitFor, type Harness } from './helpers.js';
 
 let h: Harness | null = null;
@@ -104,6 +105,29 @@ describe('T16 — recusas e limites', () => {
     const b = await openRelay(h.port);
     b.say({ t: 'entrar', codigo: code });
     expect(await b.next('erro')).toEqual({ t: 'erro', motivo: 'código inválido ou vencido' });
+  });
+
+  it('entrar confere o prazo sozinho, mesmo antes da varredura (sem timers: só a classe e um relógio manual)', () => {
+    let now = 1_000_000;
+    const rooms = new Rooms(() => now, () => {});
+    const fake = () => {
+      const out: Record<string, unknown>[] = [];
+      return { out, c: { send: (d: string) => out.push(JSON.parse(d)), close: () => {} } as unknown as Conn };
+    };
+    const a = fake();
+    const b = fake();
+    rooms.control(a.c, '{"t":"criar"}');
+    const code = a.out[0]!.codigo as string;
+    now += ROOM_WAIT_MS - 1;
+    const early = fake();
+    rooms.control(early.c, JSON.stringify({ t: 'entrar', codigo: code }));
+    expect(early.out).toEqual([{ t: 'par' }]); // 1 ms antes do prazo ainda vale
+    rooms.left(early.c);
+    rooms.control(a.c, '{"t":"criar"}');
+    const code2 = a.out.at(-1)!.codigo as string;
+    now += ROOM_WAIT_MS; // exatamente 2 min depois; nenhuma varredura rodou
+    rooms.control(b.c, JSON.stringify({ t: 'entrar', codigo: code2 }));
+    expect(b.out).toEqual([{ t: 'erro', motivo: 'código inválido ou vencido' }]);
   });
 
   it('quando um sai, o outro recebe "saiu", a sala acaba e ele pode criar outra', async () => {

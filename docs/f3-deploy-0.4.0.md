@@ -24,7 +24,7 @@ npm test
 npm run build
 ```
 
-O `npm test` deve passar **104 testes**. **Se algum falhar, pare aqui** e me mande a saída.
+O `npm test` deve passar **105 testes**. **Se algum falhar, pare aqui** e me mande a saída.
 
 ## 2. Guardar a versão atual e instalar
 
